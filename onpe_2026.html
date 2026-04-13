@@ -279,7 +279,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 <div id="sec-evolucion" class="sec">
   
   <div class="panel full" style="margin-bottom:1rem">
-    <div class="ptitle">Evolución top 7 candidatos — % votos válidos por avance de actas</div>
+    <div class="ptitle">Evolución top 6 candidatos — % votos válidos por avance de actas</div>
     <div class="legend" id="evoLeg"></div>
     <div class="chart-box" style="height:350px">
       <canvas id="evoC" role="img"></canvas>
@@ -287,7 +287,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
   </div>
 
   <div class="panel full" style="margin-bottom:1rem">
-    <div class="ptitle">Evolución top 7 candidatos — Votos Emitidos (Barras)</div>
+    <div class="ptitle">Evolución top 6 candidatos — Votos Emitidos (Barras)</div>
     <div class="chart-box" style="height:350px">
       <canvas id="evoVotesC" role="img"></canvas>
     </div>
@@ -593,7 +593,8 @@ function renderEvo() {
   const ttb=isDark?"#2a2a2e":"#fff";
   const ttd=isDark?"#444":"#ddd";
 
-  const plotCands = EVO.top7;
+  // Mostrar Top 6 candidatos en los gráficos (índices 0 al 5)
+  const plotCands = EVO.top7.slice(0, 6);
 
   document.getElementById("evoLeg").innerHTML = plotCands.map(m=>
     `<div class="leg">
@@ -631,6 +632,7 @@ function renderEvo() {
           backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
           titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
           titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
+          itemSort: (a, b) => b.parsed.y - a.parsed.y, // <-- SORT HOVER TOOLTIP DESCENDING
           callbacks:{
             title:i=>`Actas contabilizadas: ${i[0].label}`,
             label:i=>` ${i.dataset.label}: ${i.parsed.y.toFixed(3)}%`
@@ -665,6 +667,7 @@ function renderEvo() {
           backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
           titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
           titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
+          itemSort: (a, b) => b.parsed.y - a.parsed.y, // <-- SORT HOVER TOOLTIP DESCENDING
           callbacks:{
             title:i=>`Actas contabilizadas: ${i[0].label}`,
             label:i=>` ${i.dataset.label}: ${i.parsed.y.toLocaleString("es-PE")} votos`
@@ -690,14 +693,15 @@ window.toggleHmFilter = (cb) => {
 
 function renderEvoHeatmap() {
   const labels = EVO.labels;
+  const heatmapCandsPool = EVO.top7.slice(0, 6); // Usar los Top 6 para los filtros
   
   if (!hmSelectedCands) {
-      hmSelectedCands = EVO.top7.slice(1, 6).map(c => c.n);
+      hmSelectedCands = EVO.top7.slice(1, 6).map(c => c.n); // Default: 2do al 6to
   }
 
   let filterHtml = `<div class="hm-filters">
                       <div class="hm-filters-title">Filtrar Candidatos:</div>`;
-  EVO.top7.forEach(c => {
+  heatmapCandsPool.forEach(c => {
       const isChecked = hmSelectedCands.includes(c.n) ? "checked" : "";
       filterHtml += `<label>
                         <input type="checkbox" value="${c.n}" onchange="toggleHmFilter(this)" ${isChecked}>
@@ -800,7 +804,7 @@ async function renderMapAndRegions() {
   }
 
   const legendDiv = document.getElementById("mapLegend");
-  const topCands = (DATA.candidatos || []).slice(0, 7); 
+  const topCands = (DATA.candidatos || []).slice(0, 6); 
   if (topCands.length > 0) {
       legendDiv.innerHTML = topCands.map((c, i) => `
         <div class="leg">
