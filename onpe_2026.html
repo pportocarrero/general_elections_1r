@@ -256,7 +256,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 <div id="sec-nacional" class="sec active">
   <div class="two-col">
     <div class="panel full">
-      <div class="ptitle">Candidatos — % de votos válidos</div>
+      <div class="ptitle">Candidatos — % de votos válidos (> 1%)</div>
       <div class="clist" id="candList">
         <div style="color:var(--faint);padding:1rem 0">Cargando…</div>
       </div>
@@ -381,7 +381,6 @@ let DATA = null, selReg = null;
 let donutChart = null, evoChart = null, evoVotesChart = null;
 let geoJsonData = null; 
 
-// Estado de selección del Heatmap (Por defecto: del 2do al 6to puesto)
 let hmSelectedCands = null;
 
 async function doRefresh() {
@@ -473,22 +472,52 @@ function renderStats() {
     "Corte: " + new Date(ts).toLocaleString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
 }
 
+// ── LÓGICA DE AGRUPACIÓN (Candidatos > 1% + Otros) ──
+function processCandidatos(dataCands) {
+  if (!dataCands || !dataCands.length) return [];
+  let mainCands = [];
+  let otrosVotos = 0;
+  let otrosPct = 0;
+
+  [...dataCands].sort((a,b)=>b.pct-a.pct).forEach(c => {
+    if (+c.pct >= 1.0) {
+      mainCands.push(c);
+    } else {
+      otrosVotos += (+c.votos || 0);
+      otrosPct += (+c.pct || 0);
+    }
+  });
+
+  if (otrosVotos > 0 || otrosPct > 0) {
+    mainCands.push({
+      nombre: "Otros",
+      partido: "Agrupaciones < 1%",
+      votos: otrosVotos,
+      pct: otrosPct,
+      isOtros: true
+    });
+  }
+  return mainCands;
+}
+
 function renderCands() {
-  const cands = [...(DATA.candidatos||[])].sort((a,b)=>b.pct-a.pct);
+  const cands = processCandidatos(DATA.candidatos);
   if (!cands.length) return;
   const max = cands[0].pct;
   const totalEmitidos = +DATA.votosEmitidos || 0;
 
   document.getElementById("candList").innerHTML = cands.map((c,i)=>{
-    const col = COLORS[i]||COLORS[COLORS.length - 1];
+    const col = c.isOtros ? "#8b8b8b" : (COLORS[i]||COLORS[COLORS.length - 1]);
     const bw  = (c.pct/max*100).toFixed(1);
-    const rc  = i===0?"r1":i===1?"r2":i===2?"r3":"";
+    const rc  = (!c.isOtros && i===0) ? "r1" : (!c.isOtros && i===1) ? "r2" : (!c.isOtros && i===2) ? "r3" : "";
     const pctEmitidos = totalEmitidos>0 && c.votos>0
       ? `<div class="cpct-emitidos">${((c.votos/totalEmitidos)*100).toFixed(2)}% s/emitidos</div>` : "";
     const votos = c.votos>0
       ? `<div class="cvotos">${c.votos.toLocaleString("es-PE")} votos</div>` : "";
+    const badge = c.isOtros ? "+" : (i+1);
+
     return `<div class="crow ${rc}">
-      <div class="rank-badge" style="background:${col}">${i+1}</div>
+      <div class="rank-badge" style="background:${col}">${badge}</div>
       <div class="cinfo">
         <div class="cname">${c.nombre}</div>
         <div class="cparty">${c.partido}</div>
@@ -534,15 +563,18 @@ function renderResumen() {
 }
 
 function renderDonut() {
-  const cands = [...(DATA.candidatos||[])].sort((a,b)=>b.pct-a.pct).slice(0,8);
+  const cands = processCandidatos(DATA.candidatos);
   if (!cands.length) return;
   const surf = getComputedStyle(document.body).getPropertyValue("--surface").trim()||"#fff";
   if (donutChart) donutChart.destroy();
+  
+  const bgColors = cands.map((c, i) => c.isOtros ? "#8b8b8b" : (COLORS[i] || COLORS[COLORS.length-1]));
+
   donutChart = new Chart(document.getElementById("donutC"),{
     type:"doughnut",
     data:{
       labels: cands.map(c=>c.nombre),
-      datasets:[{data:cands.map(c=>+c.pct),backgroundColor:cands.map((_,i)=>COLORS[i]),borderWidth:2,borderColor:surf}]
+      datasets:[{data:cands.map(c=>+c.pct),backgroundColor:bgColors,borderWidth:2,borderColor:surf}]
     },
     options:{
       responsive:true,maintainAspectRatio:false,cutout:"58%",
@@ -561,7 +593,6 @@ function renderEvo() {
   const ttb=isDark?"#2a2a2e":"#fff";
   const ttd=isDark?"#444":"#ddd";
 
-  // Volvemos a mostrar a los TOP 7 candidatos
   const plotCands = EVO.top7;
 
   document.getElementById("evoLeg").innerHTML = plotCands.map(m=>
@@ -648,7 +679,6 @@ function renderEvo() {
   });
 }
 
-// Función expuesta para actualizar el filtro del Heatmap
 window.toggleHmFilter = (cb) => {
     if (cb.checked) {
         hmSelectedCands.push(cb.value);
@@ -661,12 +691,10 @@ window.toggleHmFilter = (cb) => {
 function renderEvoHeatmap() {
   const labels = EVO.labels;
   
-  // Inicializar estado de selección por defecto (Del 2do al 6to puesto)
   if (!hmSelectedCands) {
       hmSelectedCands = EVO.top7.slice(1, 6).map(c => c.n);
   }
 
-  // Generar interfaz de filtros (Checkboxes)
   let filterHtml = `<div class="hm-filters">
                       <div class="hm-filters-title">Filtrar Candidatos:</div>`;
   EVO.top7.forEach(c => {
@@ -679,7 +707,6 @@ function renderEvoHeatmap() {
   filterHtml += `</div>`;
   document.getElementById("hmFiltersContainer").innerHTML = filterHtml;
 
-  // Filtrar los datos a graficar según lo seleccionado
   const cands = EVO.top7.filter(c => hmSelectedCands.includes(c.n));
 
   if (cands.length === 0) {
@@ -696,15 +723,13 @@ function renderEvoHeatmap() {
   }
   html += `</tr></thead><tbody>`;
 
-  // Calcular mínimos y máximos por cada columna para la escala D3 (usando ln)
-  // IMPORTANTE: Se calcula SOLO entre los candidatos seleccionados
   const scales = [];
   for (let i = 1; i < labels.length; i++) {
       let variations = cands.map(c => {
           let prev = c.v[i-1];
           let curr = c.v[i];
           if (prev === 0) return curr > 0 ? 100 : 0; 
-          return Math.log(curr / prev) * 100; // Fórmula de Retorno Logarítmico
+          return Math.log(curr / prev) * 100;
       });
       
       let minV = Math.min(...variations);
@@ -714,7 +739,6 @@ function renderEvoHeatmap() {
       scales.push(scale);
   }
 
-  // Generar Filas
   cands.forEach(c => {
       html += `<tr>
                 <td class="cand-name">
@@ -728,7 +752,7 @@ function renderEvoHeatmap() {
           let diff = 0;
           
           if (prev === 0) diff = curr > 0 ? 100 : 0;
-          else diff = Math.log(curr / prev) * 100; // Fórmula de Retorno Logarítmico
+          else diff = Math.log(curr / prev) * 100;
           
           let bg = scales[i-1](diff);
           
@@ -880,7 +904,8 @@ function renderRegDet() {
   }
   
   const r  = DATA.regiones[selReg];
-  const mx = r.candidatos?.[0]?.pct||100;
+  const candsGrouped = processCandidatos(r.candidatos || []);
+  const mx = candsGrouped[0]?.pct||100;
   
   el.innerHTML = `
     <div class="rdet-title" style="display:flex; justify-content:space-between; align-items:flex-start;">
@@ -894,18 +919,21 @@ function renderRegDet() {
         ✕ Cerrar
       </button>
     </div>
-    <div class="clist" style="max-height: 380px; overflow-y: auto; padding-right:5px;">${(r.candidatos||[]).map((c,i)=>`
-      <div class="crow">
-        <div class="rank-badge" style="background:${COLORS[i]||COLORS[COLORS.length - 1]};width:22px;height:22px;font-size:10px">${i+1}</div>
+    <div class="clist" style="max-height: 380px; overflow-y: auto; padding-right:5px;">${candsGrouped.map((c,i)=>{
+      const col = c.isOtros ? "#8b8b8b" : (COLORS[i]||COLORS[COLORS.length - 1]);
+      const badge = c.isOtros ? "+" : (i+1);
+      return `<div class="crow">
+        <div class="rank-badge" style="background:${col};width:22px;height:22px;font-size:10px">${badge}</div>
         <div class="cinfo"><div class="cname" style="font-size:12px">${c.nombre}</div><div class="cparty">${c.partido}</div></div>
         <div class="cbar-wrap">
-          <div class="ctrack"><div class="cfill" style="width:${(c.pct/mx*100).toFixed(1)}%;background:${COLORS[i]||COLORS[COLORS.length - 1]}"></div></div>
+          <div class="ctrack"><div class="cfill" style="width:${(c.pct/mx*100).toFixed(1)}%;background:${col}"></div></div>
         </div>
         <div class="cpct-col">
-          <div class="cpct" style="color:${COLORS[i]||COLORS[COLORS.length - 1]};font-size:14px">${(+c.pct).toFixed(3)}%</div>
+          <div class="cpct" style="color:${col};font-size:14px">${(+c.pct).toFixed(3)}%</div>
           <div style="font-size:9px;color:var(--faint);margin-top:2px">${c.votos.toLocaleString('es-PE')} votos</div>
         </div>
-      </div>`).join("")}
+      </div>`
+    }).join("")}
     </div>`;
   el.classList.add("show");
 }
