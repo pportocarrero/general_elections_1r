@@ -159,6 +159,36 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
   padding-top: 15px;
   border-top: 1px dashed var(--border);
 }
+
+/* Heatmap Table Styling */
+.hm-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; padding: 10px; background: var(--surface2); border-radius: var(--r); align-items: center;}
+.hm-filters-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-right: 5px;}
+.hm-filters label { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; cursor: pointer; user-select: none;}
+.heatmap-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.heatmap-table th, .heatmap-table td { border: 1px solid var(--border); padding: 8px 6px; text-align: center; }
+.heatmap-table th { background: var(--surface2); color: var(--text); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+.heatmap-table .cand-name { text-align: left; font-weight: 600; color: var(--text); white-space: nowrap; }
+.hm-cell { font-weight: 700; color: #111 !important; transition: filter 0.2s; cursor: default; }
+.hm-cell:hover { filter: brightness(0.9); }
+
+/* Footer Styling */
+.app-footer {
+  text-align: center;
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.app-footer a {
+  color: var(--blue);
+  text-decoration: none;
+  font-weight: 600;
+}
+.app-footer a:hover {
+  text-decoration: underline;
+}
 </style>
 </head>
 <body>
@@ -247,6 +277,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 </div>
 
 <div id="sec-evolucion" class="sec">
+  
   <div class="panel full" style="margin-bottom:1rem">
     <div class="ptitle">Evolución top 7 candidatos — % votos válidos por avance de actas</div>
     <div class="legend" id="evoLeg"></div>
@@ -254,13 +285,28 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       <canvas id="evoC" role="img"></canvas>
     </div>
   </div>
-  <div class="panel full">
+
+  <div class="panel full" style="margin-bottom:1rem">
     <div class="ptitle">Evolución top 7 candidatos — Votos Emitidos (Barras)</div>
     <div class="chart-box" style="height:350px">
       <canvas id="evoVotesC" role="img"></canvas>
     </div>
     <div class="evo-nota" id="evoNota"></div>
   </div>
+
+  <div class="panel full">
+    <div class="ptitle">Mapa de Calor — Crecimiento Logarítmico de Votos por Corte</div>
+    
+    <div id="hmFiltersContainer"></div>
+
+    <div style="overflow-x:auto">
+      <div id="heatmapContainer"></div>
+    </div>
+    <div class="evo-nota">
+      Calculado usando la fórmula de <strong>retorno logarítmico (ln(V<sub>t</sub> / V<sub>t-1</sub>))</strong> para evaluar el momentum analítico del conteo de votos. Celeste = menor tasa de crecimiento relativo, Rojo = mayor tasa de crecimiento en la columna respectiva, <strong>solo entre los candidatos seleccionados</strong>.
+    </div>
+  </div>
+
 </div>
 
 <div id="sec-regiones" class="sec">
@@ -290,6 +336,11 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 </div>
 
 <div id="mapTooltip" class="map-tooltip"></div>
+
+<div class="app-footer">
+  Creado por Pedro Portocarrero con fines académicos e informativos.<br>
+  Si quieres contactarme, puedes visitar mi <a href="https://www.linkedin.com/in/pportocarrero/" target="_blank" rel="noopener noreferrer">LinkedIn</a>.
+</div>
 
 </div>
 <script>
@@ -330,6 +381,9 @@ let DATA = null, selReg = null;
 let donutChart = null, evoChart = null, evoVotesChart = null;
 let geoJsonData = null; 
 
+// Estado de selección del Heatmap (Por defecto: del 2do al 6to puesto)
+let hmSelectedCands = null;
+
 async function doRefresh() {
   const btn=document.getElementById("refreshBtn");
   const sp =document.getElementById("spin");
@@ -346,7 +400,7 @@ async function doRefresh() {
     setAlert("ok", `${src} — ${(+d.pctActas).toFixed(3)}% de actas · ${d.regiones?.length||0} regiones cargadas`);
     setTimeout(()=>setAlert("",""), 6000);
   } catch(e) {
-    setAlert("warn", `⚠️ <strong>Proxy no responde.</strong> Ejecuta: <code>python3 onpe_proxy.py</code>`);
+    setAlert("warn", `⚠️ <strong>Proxy no responde.</strong> Revisa el backend en Render.`);
   } finally {
     btn.disabled=false; sp.style.display="none"; bt.textContent="↻ Actualizar";
   }
@@ -387,7 +441,10 @@ function render() {
   renderCands();
   renderResumen();
   renderDonut();
-  if (document.getElementById("sec-evolucion").classList.contains("active")) renderEvo();
+  if (document.getElementById("sec-evolucion").classList.contains("active")) {
+      renderEvo();
+      renderEvoHeatmap();
+  }
   if (document.getElementById("sec-regiones").classList.contains("active"))  renderMapAndRegions();
   setPill(DATA.fuente);
 }
@@ -504,7 +561,10 @@ function renderEvo() {
   const ttb=isDark?"#2a2a2e":"#fff";
   const ttd=isDark?"#444":"#ddd";
 
-  document.getElementById("evoLeg").innerHTML = EVO.top7.map(m=>
+  // Volvemos a mostrar a los TOP 7 candidatos
+  const plotCands = EVO.top7;
+
+  document.getElementById("evoLeg").innerHTML = plotCands.map(m=>
     `<div class="leg">
       <div class="ldot" style="background:${m.c}"></div>
       <span class="leg-name">${m.n}</span>
@@ -522,7 +582,7 @@ function renderEvo() {
     type:"line",
     data:{
       labels: EVO.labels,
-      datasets: EVO.top7.map((m,i)=>({
+      datasets: plotCands.map((m,i)=>({
         label:m.n, data:m.d,
         borderColor:m.c, backgroundColor:m.c+"15",
         borderWidth:2.5, borderDash:dashes[i]||[],
@@ -558,7 +618,7 @@ function renderEvo() {
     type:"bar",
     data:{
       labels: EVO.labels,
-      datasets: EVO.top7.map(m=>({
+      datasets: plotCands.map(m=>({
         label:m.n, data:m.v,
         backgroundColor:m.c,
         borderRadius: 4,
@@ -588,6 +648,101 @@ function renderEvo() {
   });
 }
 
+// Función expuesta para actualizar el filtro del Heatmap
+window.toggleHmFilter = (cb) => {
+    if (cb.checked) {
+        hmSelectedCands.push(cb.value);
+    } else {
+        hmSelectedCands = hmSelectedCands.filter(n => n !== cb.value);
+    }
+    renderEvoHeatmap();
+};
+
+function renderEvoHeatmap() {
+  const labels = EVO.labels;
+  
+  // Inicializar estado de selección por defecto (Del 2do al 6to puesto)
+  if (!hmSelectedCands) {
+      hmSelectedCands = EVO.top7.slice(1, 6).map(c => c.n);
+  }
+
+  // Generar interfaz de filtros (Checkboxes)
+  let filterHtml = `<div class="hm-filters">
+                      <div class="hm-filters-title">Filtrar Candidatos:</div>`;
+  EVO.top7.forEach(c => {
+      const isChecked = hmSelectedCands.includes(c.n) ? "checked" : "";
+      filterHtml += `<label>
+                        <input type="checkbox" value="${c.n}" onchange="toggleHmFilter(this)" ${isChecked}>
+                        <span style="color:${c.c}">■</span> ${c.n}
+                     </label>`;
+  });
+  filterHtml += `</div>`;
+  document.getElementById("hmFiltersContainer").innerHTML = filterHtml;
+
+  // Filtrar los datos a graficar según lo seleccionado
+  const cands = EVO.top7.filter(c => hmSelectedCands.includes(c.n));
+
+  if (cands.length === 0) {
+      document.getElementById("heatmapContainer").innerHTML = `<div style="padding:1rem;color:var(--faint);font-size:12px;">Selecciona al menos un candidato para calcular el mapa de calor.</div>`;
+      return;
+  }
+
+  let html = `<table class="heatmap-table">
+                <thead><tr>
+                  <th style="text-align:left">Candidato</th>`;
+  
+  for (let i = 1; i < labels.length; i++) {
+      html += `<th>${labels[i]}</th>`;
+  }
+  html += `</tr></thead><tbody>`;
+
+  // Calcular mínimos y máximos por cada columna para la escala D3 (usando ln)
+  // IMPORTANTE: Se calcula SOLO entre los candidatos seleccionados
+  const scales = [];
+  for (let i = 1; i < labels.length; i++) {
+      let variations = cands.map(c => {
+          let prev = c.v[i-1];
+          let curr = c.v[i];
+          if (prev === 0) return curr > 0 ? 100 : 0; 
+          return Math.log(curr / prev) * 100; // Fórmula de Retorno Logarítmico
+      });
+      
+      let minV = Math.min(...variations);
+      let maxV = Math.max(...variations);
+      
+      let scale = d3.scaleLinear().domain([minV, maxV]).range(["#b3e5fc", "#ef9a9a"]);
+      scales.push(scale);
+  }
+
+  // Generar Filas
+  cands.forEach(c => {
+      html += `<tr>
+                <td class="cand-name">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <div class="ldot" style="background:${c.c}"></div>${c.n}
+                  </div>
+                </td>`;
+      for (let i = 1; i < labels.length; i++) {
+          let prev = c.v[i-1];
+          let curr = c.v[i];
+          let diff = 0;
+          
+          if (prev === 0) diff = curr > 0 ? 100 : 0;
+          else diff = Math.log(curr / prev) * 100; // Fórmula de Retorno Logarítmico
+          
+          let bg = scales[i-1](diff);
+          
+          html += `<td class="hm-cell" style="background-color: ${bg};">
+                      +${diff.toFixed(2)}%
+                   </td>`;
+      }
+      html += `</tr>`;
+  });
+  html += `</tbody></table>`;
+
+  document.getElementById("heatmapContainer").innerHTML = html;
+}
+
 function normalizeMapName(str) {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 }
@@ -598,7 +753,6 @@ function getCandidateColorByGlobalList(candName) {
   return idx !== -1 && COLORS[idx] ? COLORS[idx] : "#a0a09a";
 }
 
-// Nueva función global para deseleccionar región desde el botón "Cerrar"
 window.deselectRegion = () => {
     selReg = null;
     d3.selectAll("path")
@@ -659,7 +813,6 @@ async function renderMapAndRegions() {
           const r = regs.find(reg => normalizeMapName(reg.nombre) === mName);
           return (r && r.lider) ? getCandidateColorByGlobalList(r.lider) : "var(--surface2)";
       })
-      // Ajuste para mantener la opacidad correcta si ya hay una región seleccionada al hacer refresh
       .style("opacity", function(d) {
           if (selReg === null) return 1;
           const mName = normalizeMapName(d.properties.name);
@@ -699,10 +852,8 @@ async function renderMapAndRegions() {
           
           if (idx !== -1) {
               if (selReg === idx) {
-                  // Deseleccionar al hacer clic de nuevo en la misma región
                   window.deselectRegion();
               } else {
-                  // Seleccionar nueva región
                   selReg = idx;
                   d3.selectAll("path").style("opacity", 0.4);
                   d3.select(this).style("opacity", 1);
@@ -711,7 +862,6 @@ async function renderMapAndRegions() {
           }
       });
       
-  // Renderizar el recuadro de la derecha independientemente de si hay selección o no
   renderRegDet();
 }
 
@@ -719,7 +869,6 @@ function renderRegDet() {
   const el = document.getElementById("regDet");
   
   if (selReg === null || !DATA.regiones?.[selReg]) { 
-      // Pantalla por defecto (Mapa Nacional Activo)
       el.innerHTML = `
          <div style="text-align:center; padding:5rem 1rem; color:var(--faint)">
             <p style="font-size:36px; margin-bottom:15px">🗺️</p>
@@ -777,7 +926,11 @@ window.showSec = (id,btn) => {
   document.querySelectorAll(".tabs .tab").forEach(b=>b.classList.remove("active"));
   document.getElementById("sec-"+id).classList.add("active");
   btn.classList.add("active");
-  if (id==="evolucion") renderEvo();
+  
+  if (id==="evolucion") {
+      renderEvo();
+      renderEvoHeatmap();
+  }
   if (id==="regiones")  renderMapAndRegions();
 };
 
