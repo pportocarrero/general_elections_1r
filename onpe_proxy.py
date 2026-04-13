@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""
+ONPE 2026 — Proxy Local v10 (Mapa GeoJSON integrado)
+Uso:  python3 onpe_proxy.py
+Web:  http://localhost:8765
+"""
+
+import http.server, json, threading, time
+import urllib.request, urllib.error, urllib.parse
+import gzip, os, sys
+from datetime import datetime, timezone
+
+PORT        = int(os.environ.get("PORT", 8765))
+REFRESH_SEC = 60
+CACHE_FILE  = "onpe_cache.json"
+HTML_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "onpe_2026.html")
+BASE        = "https://resultadoelectoral.onpe.gob.pe/presentacion-backend"
+
+# Endpoints Nacionales
+EP_MESAS     = BASE + "/mesa/totales?tipoFiltro=eleccion"
+EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccion"
+EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
+
+# Endpoints Regionales
+EP_REG_PART  = BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={}&listRegiones=TODOS,PER%C3%9A,EXTRANJERO&idEleccion=10"
+EP_REG_TOT   = BASE + "/resumen-general/totales?idAmbitoGeografico=1&idEleccion=10&tipoFiltro=ubigeo_nivel_01&idUbigeoDepartamento={}"
+EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
+
+# Diccionario Oficial de Ubigeos
+UBIGEOS = {
+    "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
+    "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
+    "070000": "Callao", "080000": "Cusco", "090000": "Huancavelica",
+    "100000": "Huánuco", "110000": "Ica", "120000": "Junín",
+    "130000": "La Libertad", "140000": "Lambayeque", "150000": "Lima",
+    "160000": "Loreto", "170000": "Madre de Dios", "180000": "Moquegua",
+    "190000": "Pasco", "200000": "Piura", "210000": "Puno",
+    "220000": "San Martín", "230000": "Tacna", "240000": "Tumbes",
+    "250000": "Ucayali"
+}
+
+HEADERS = {
+    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept":          "application/json, text/plain, */*",
+    "Accept-Language": "es-PE,es;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer":         "https://resultadoelectoral.onpe.gob.pe/",
+    "Origin":          "https://resultadoelectoral.onpe.gob.pe",
+    "Connection":      "keep-alive",
+}
+
+FALLBACK = {
+    "fuente": "respaldo_local",
+    "timestamp": "2026-04-13T10:00:00",
+    "pctActas": 53.886, "actasContabilizadas": 49988,
+    "actasTotales": 92766, "actasJEE": 155, "actasPendientes": 42623,
+    "votosEmitidos": 11488641, "votosValidos": 9847379,
+    "votosBlancos": 1128877, "votosNulos": 512385,
+    "participacion": 42.044,
+    "candidatos": [],
+    "regiones": [],
+}
+
+_cache = None
+_lock  = threading.Lock()
+
+def _get_json(url):
+    req = urllib.request.Request(url, headers=HEADERS)
+    try:
+        with urllib.request.urlopen(req, timeout=12) as r:
+            raw = r.read()
+            if r.headers.get("Content-Encoding", "") == "gzip":
+                raw = gzip.decompress(raw)
+            return json.loads(raw.decode("utf-8", errors="replace"))
+    except Exception as e:
+        return None
+
+def _unwrap(raw):
+    if isinstance(raw, dict) and "data" in raw:
+        return raw["data"]
+    return raw
+
+def parse_avance(raw_totales):
+    if not raw_totales: return {}
+    d = _unwrap(raw_totales)
+    if not isinstance(d, dict): return {}
+
+    pct  = float(d.get("actasContabilizadas") or d.get("porcentajeActasContabilizadas") or 0)
+    cont = int(d.get("contabilizadas") or d.get("actasContabilizadas") or 0)
+    tot  = int(d.get("totalActas") or 92766)
+    jee  = int(d.get("enviadasJee") or 0)
+    pend = int(d.get("pendientesJee") or max(0, tot - cont - jee))
+
+    return {
+        "pctActas": pct, "actasContabilizadas": cont, "actasTotales": tot,
+        "actasJEE": jee, "actasPendientes": pend,
+        "votosEmitidos": int(d.get("totalVotosEmitidos") or 0),
+        "votosValidos": int(d.get("totalVotosValidos") or 0),
+        "participacion": float(d.get("participacionCiudadana") or 0),
+    }
+
+def parse_candidatos(raw):
+    if not raw: return [], 0, 0
+    items = _unwrap(raw)
+    if not isinstance(items, list): return [], 0, 0
+
+    candidatos = []
+    votos_blancos = votos_nulos = 0
+
+    for item in items:
+        cod = str(item.get("codigoAgrupacionPolitica") or "")
+        nombre = (item.get("nombreCandidato") or "").strip()
+        partido= (item.get("nombreAgrupacionPolitica") or "").strip()
+        votos  = int(item.get("totalVotosValidos") or 0)
+        pct    = float(item.get("porcentajeVotosValidos") or 0)
+
+        if cod == "80": votos_blancos = votos; continue
+        if cod == "81": votos_nulos = votos; continue
+
+        nombre_fmt = _fmt_nombre(nombre)
+        if nombre_fmt and (votos > 0 or pct > 0):
+            candidatos.append({
+                "nombre": nombre_fmt, "partido": partido.title(),
+                "votos": votos, "pct": round(pct, 3),
+            })
+
+    candidatos.sort(key=lambda x: -x["pct"])
+    return candidatos, votos_blancos, votos_nulos
+
+def _fmt_nombre(nombre_mayus):
+    partes = nombre_mayus.strip().title().split()
+    if len(partes) >= 4: return f"{partes[0]} {partes[2]}"
+    if len(partes) == 3: return f"{partes[0]} {partes[1]}"
+    if len(partes) == 2: return f"{partes[0]} {partes[1]}"
+    return nombre_mayus.title()
+
+def fetch_region(ubigeo, nombre):
+    raw_part = _get_json(EP_REG_PART.format(ubigeo))
+    raw_tot  = _get_json(EP_REG_TOT.format(ubigeo))
+    cands, _, _ = parse_candidatos(raw_part)
+    avance = parse_avance(raw_tot)
+
+    if not cands: return None
+
+    return {
+        "nombre": nombre,
+        "pctActas": avance.get("pctActas", 0),
+        "lider": cands[0]["nombre"],
+        "pctLider": cands[0]["pct"],
+        "candidatos": cands
+    }
+
+def fetch_onpe():
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")
+    result   = dict(FALLBACK)
+    ok_count = 0
+
+    raw_tot = _get_json(EP_TOTALES)
+    avance  = parse_avance(raw_tot)
+    if avance.get("pctActas", 0) > 0:
+        result.update(avance)
+        ok_count += 1
+        print(f"  ✓ avance   → {result['pctActas']:.3f}% actas")
+
+    raw_cand = _get_json(EP_CANDIDATOS)
+    if raw_cand:
+        cands, blancos, nulos = parse_candidatos(raw_cand)
+        if cands:
+            result["candidatos"]  = cands
+            result["votosBlancos"] = blancos
+            result["votosNulos"]   = nulos
+            ok_count += 1
+            print(f"  ✓ candidatos → {len(cands)} participantes")
+
+    print(f"  ✓ Extrayendo data de {len(UBIGEOS)} regiones...")
+    regiones = []
+    
+    for ubigeo, nombre in UBIGEOS.items():
+        res = fetch_region(ubigeo, nombre)
+        if res:
+            regiones.append(res)
+            print(f"    - {nombre}: OK ({res['pctActas']}% actas)")
+        else:
+            print(f"    - {nombre}: Sin datos en este corte")
+        time.sleep(0.4) 
+    
+    if regiones:
+        regiones.sort(key=lambda x: x["nombre"])
+        result["regiones"] = regiones
+
+    result["fuente"] = ("api_onpe" if ok_count >= 2 else "api_onpe_parcial" if ok_count == 1 else "respaldo_local")
+    result["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return result
+
+def _load_cache():
+    global _cache
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE) as f: _cache = json.load(f)
+            return
+        except Exception: pass
+    _cache = dict(FALLBACK)
+
+def _save_cache(data):
+    try:
+        with open(CACHE_FILE, "w") as f: json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception: pass
+
+def _do_refresh():
+    global _cache
+    data = fetch_onpe()
+    with _lock: _cache = data
+    _save_cache(data)
+    return data
+
+def refresh_loop():
+    while True:
+        try: _do_refresh()
+        except Exception as e: print(f"  ✗ Error en ciclo: {e}")
+        time.sleep(REFRESH_SEC)
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        if args and not ("/api/datos" in str(args[0])): print(f"  GET {args[0]}")
+    def _cors(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+    def do_OPTIONS(self):
+        self.send_response(204); self._cors(); self.end_headers()
+    def _json(self, obj, status=200):
+        payload = json.dumps(obj, ensure_ascii=False, indent=2).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self._cors(); self.end_headers(); self.wfile.write(payload)
+
+    def do_GET(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path == "/api/datos":
+            with _lock: data = dict(_cache)
+            self._json(data)
+        elif path == "/api/refresh":
+            data = _do_refresh()
+            self._json({"ok": True, "fuente": data["fuente"], "pctActas": data.get("pctActas", 0)})
+        elif path == "/api/mapa":
+            # Extrae el mapa geoJSON de la web de ONPE directamente
+            try:
+                req = urllib.request.Request(EP_MAP_JSON, headers=HEADERS)
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    raw = r.read()
+                    if r.headers.get("Content-Encoding", "") == "gzip": raw = gzip.decompress(raw)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self._cors(); self.end_headers(); self.wfile.write(raw)
+            except Exception as e:
+                self.send_response(500); self._cors(); self.end_headers()
+        elif path in ("/", "/index.html"):
+            if os.path.exists(HTML_FILE):
+                with open(HTML_FILE, "rb") as f: content = f.read()
+                self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers(); self.wfile.write(content)
+            else:
+                self.send_response(404); self.end_headers(); self.wfile.write(b"No se encontro onpe_2026.html")
+        else:
+            self.send_response(404); self.end_headers()
+
+if __name__ == "__main__":
+    print("=" * 60)
+    print("  ONPE 2026 — Proxy Local v10 (Ubigeos y Mapa)")
+    print("=" * 60)
+    _load_cache()
+    threading.Thread(target=_do_refresh, daemon=True).start()
+    threading.Thread(target=refresh_loop, daemon=True).start()
+    #server = http.server.ThreadingHTTPServer(("localhost", PORT), Handler)
+    server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    print(f"\n  Dashboard:  http://0.0.0.0:{PORT}")
+    try: server.serve_forever()
+    except KeyboardInterrupt: sys.exit(0)

@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ONPE 2026 — Resultados Presidenciales</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+:root{
+  --bg:#f5f4f0;--surface:#fff;--surface2:#f0efe9;
+  --border:rgba(0,0,0,.09);--border2:rgba(0,0,0,.18);
+  --text:#1a1a18;--muted:#6b6b65;--faint:#9b9b93;
+  --blue:#185FA5;--red:#A32D2D;--green:#3B6D11;
+  --amber:#854F0B;--purple:#534AB7;--teal:#0F6E56;
+  --r:10px;--sh:0 1px 4px rgba(0,0,0,.08);
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#18181a;--surface:#232327;--surface2:#2c2c31;
+  --border:rgba(255,255,255,.09);--border2:rgba(255,255,255,.20);
+  --text:#e8e8e2;--muted:#a0a09a;--faint:#58585a;
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px 6px;border-radius:4px}
+.app{max-width:1180px;margin:0 auto;padding:1.5rem 1rem 4rem}
+
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:10px}
+.logo h1{font-size:18px;font-weight:700;letter-spacing:-.3px}
+.logo p{font-size:11px;color:var(--muted);margin-top:2px}
+.topright{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#lastUpdate{font-size:11px;color:var(--faint)}
+.pill{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;border:1px solid;letter-spacing:.04em;text-transform:uppercase}
+.pill-live    {background:#e8f5ec;color:#1a4a28;border-color:#6ee7b0}
+.pill-partial {background:#fef3e2;color:#6b3d00;border-color:#f59e0b}
+.pill-fallback{background:#fdecea;color:#6b1a1a;border-color:#f87171}
+@media(prefers-color-scheme:dark){
+  .pill-live    {background:#0d2e18;color:#6ee7b7;border-color:#1a4a28}
+  .pill-partial {background:#2d1f00;color:#fbbf24;border-color:#4d3300}
+  .pill-fallback{background:#2d0e0e;color:#fca5a5;border-color:#5a1a1a}
+}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;transition:background .15s}
+.btn:hover{background:var(--surface2)}
+.btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn.primary:hover{opacity:.88}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.spin{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+.alert{padding:9px 14px;border-radius:var(--r);font-size:12px;margin-bottom:.85rem;line-height:1.7}
+.alert.info{background:#e8f0fb;color:#1a3a6a;border:1px solid #b5d0f2}
+.alert.warn{background:#fef3e2;color:#6b4100;border:1px solid #f7d99c}
+.alert.ok  {background:#e8f5ec;color:#1a4a28;border:1px solid #9dd6b0}
+@media(prefers-color-scheme:dark){
+  .alert.info{background:#0d2240;color:#93c5fd;border-color:#1e3a5f}
+  .alert.warn{background:#2d1f00;color:#fbbf24;border-color:#4d3300}
+  .alert.ok  {background:#0d2e18;color:#6ee7b7;border-color:#1a4a28}
+}
+#alertBox{margin-bottom:.5rem}
+
+.statbar{display:flex;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:1.2rem;box-shadow:var(--sh)}
+.stat{flex:1;min-width:130px;padding:12px 18px;border-right:1px solid var(--border)}
+.stat:last-child{border-right:none}
+.slbl{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
+.sval{font-size:22px;font-weight:700;line-height:1.1}
+.ssub{font-size:11px;color:var(--muted);margin-top:2px}
+
+.prog-wrap{margin-bottom:1.2rem}
+.prog-head{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
+.prog-track{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+.prog-fill{height:100%;background:var(--blue);border-radius:4px;transition:width .6s ease}
+
+.tabs{display:flex;gap:4px;margin-bottom:1.1rem;flex-wrap:wrap}
+.tab{font-size:12px;font-weight:500;padding:6px 14px;border-radius:var(--r);border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.tab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.sec{display:none}.sec.active{display:block}
+
+.two-col{display:grid;grid-template-columns:1.4fr 1fr;gap:1rem;margin-bottom:1rem}
+@media(max-width:720px){.two-col{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.1rem 1.25rem;box-shadow:var(--sh)}
+.ptitle{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.85rem;display:flex;align-items:center;gap:6px}
+.full{grid-column:1/-1}
+
+.clist{display:flex;flex-direction:column;gap:4px}
+.crow{
+  display:grid;
+  grid-template-columns:28px 220px 1fr 80px;
+  align-items:center;gap:10px;
+  padding:9px 12px;border-radius:8px;
+  border:1px solid var(--border);
+  transition:border-color .15s,background .15s;
+}
+.crow:hover{background:var(--surface2)}
+.crow.r1{border-color:var(--blue);background:rgba(24,95,165,.04)}
+.crow.r2{border-color:var(--red);background:rgba(163,45,45,.04)}
+.crow.r3{border-color:var(--green);background:rgba(59,109,17,.04)}
+@media(prefers-color-scheme:dark){
+  .crow.r1{background:rgba(24,95,165,.08)}
+  .crow.r2{background:rgba(163,45,45,.08)}
+  .crow.r3{background:rgba(59,109,17,.08)}
+}
+.rank-badge{
+  width:24px;height:24px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:#fff;flex-shrink:0;
+}
+.cinfo .cname{font-size:13px;font-weight:600}
+.cinfo .cparty{font-size:11px;color:var(--muted);margin-top:1px}
+.cinfo .cvotos{font-size:10px;color:var(--faint);margin-top:2px}
+.cbar-wrap{display:flex;flex-direction:column;gap:4px}
+.ctrack{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.cfill{height:100%;border-radius:4px;transition:width .6s}
+.cpct-col{text-align:right}
+.cpct{font-size:17px;font-weight:700;line-height:1}
+.cpct-emitidos{font-size:10px;color:var(--faint);margin-top:2px}
+
+.resumen-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.res-card{background:var(--surface2);border-radius:8px;padding:10px 12px}
+.res-label{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.res-value{font-size:18px;font-weight:700}
+.res-sub{font-size:11px;color:var(--muted);margin-top:1px}
+
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:.75rem}
+.leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer}
+.leg:hover .leg-name{color:var(--text)}
+.ldot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.leg-name{font-weight:500}
+.chart-box{position:relative;width:100%}
+.evo-nota{font-size:11px;color:var(--muted);margin-top:.65rem;padding:8px 12px;background:var(--surface2);border-radius:var(--r);line-height:1.6}
+
+.rdet{margin-top:0;padding:1rem 1.1rem;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);box-shadow:var(--sh)}
+.rdet-title{font-size:14px;font-weight:700;margin-bottom:.75rem;color:var(--text)}
+.rdet .crow{grid-template-columns:24px 180px 1fr 70px}
+
+/* Map specific styling */
+.map-tooltip {
+  position: absolute;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  padding: 8px 12px;
+  border-radius: 8px;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  font-size: 12px;
+  transition: opacity 0.15s;
+  z-index: 1000;
+  color: var(--text);
+}
+.map-tooltip .title { font-weight: 700; margin-bottom: 4px; font-size: 13px; }
+.map-tooltip .lider { font-weight: 600; display: flex; align-items: center; gap: 5px; margin-bottom: 2px;}
+
+.map-legend-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px dashed var(--border);
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="topbar">
+  <div class="logo">
+    <h1>🗳️ ONPE 2026 — Resultados Presidenciales</h1>
+    <p>Elecciones Generales · Primera Vuelta · 12 de abril 2026 · Cómputo oficial</p>
+  </div>
+  <div class="topright">
+    <span id="sourcePill" class="pill pill-fallback">sin datos</span>
+    <span id="lastUpdate"></span>
+    <button class="btn primary" id="refreshBtn" onclick="doRefresh()">
+      <span class="spin" id="spin"></span>
+      <span id="btnTxt">↻ Actualizar</span>
+    </button>
+  </div>
+</div>
+
+<div id="alertBox"></div>
+
+<div class="statbar">
+  <div class="stat">
+    <div class="slbl">Actas contabilizadas</div>
+    <div class="sval" id="sPct">–</div>
+    <div class="ssub" id="sActas">–</div>
+  </div>
+  <div class="stat">
+    <div class="slbl">Actas pendientes</div>
+    <div class="sval" id="sPend">–</div>
+    <div class="ssub" id="sPendPct">–</div>
+  </div>
+  <div class="stat">
+    <div class="slbl">Actas al JEE</div>
+    <div class="sval" id="sJEE">–</div>
+    <div class="ssub">obs. / impugnadas</div>
+  </div>
+  <div class="stat">
+    <div class="slbl">Votos emitidos</div>
+    <div class="sval" id="sEmitidos">–</div>
+    <div class="ssub" id="sParticipacion">–</div>
+  </div>
+  <div class="stat">
+    <div class="slbl">Segunda vuelta</div>
+    <div class="sval" style="font-size:15px;padding-top:3px">7 jun 2026</div>
+    <div class="ssub">pendiente confirmación</div>
+  </div>
+</div>
+
+<div class="prog-wrap">
+  <div class="prog-head">
+    <span>Avance del cómputo oficial ONPE</span>
+    <span id="progLbl">–</span>
+  </div>
+  <div class="prog-track"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showSec('nacional',this)">Nacional</button>
+  <button class="tab"        onclick="showSec('evolucion',this)">Evolución</button>
+  <button class="tab"        onclick="showSec('regiones',this)">Regiones</button>
+</div>
+
+<div id="sec-nacional" class="sec active">
+  <div class="two-col">
+    <div class="panel full">
+      <div class="ptitle">Candidatos — % de votos válidos</div>
+      <div class="clist" id="candList">
+        <div style="color:var(--faint);padding:1rem 0">Cargando…</div>
+      </div>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="panel">
+      <div class="ptitle">Distribución — votos válidos</div>
+      <div class="chart-box" style="height:280px">
+        <canvas id="donutC" role="img"></canvas>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">Resumen del cómputo</div>
+      <div class="resumen-grid" id="resumen"></div>
+    </div>
+  </div>
+</div>
+
+<div id="sec-evolucion" class="sec">
+  <div class="panel full" style="margin-bottom:1rem">
+    <div class="ptitle">Evolución top 7 candidatos — % votos válidos por avance de actas</div>
+    <div class="legend" id="evoLeg"></div>
+    <div class="chart-box" style="height:350px">
+      <canvas id="evoC" role="img"></canvas>
+    </div>
+  </div>
+  <div class="panel full">
+    <div class="ptitle">Evolución top 7 candidatos — Votos Emitidos (Barras)</div>
+    <div class="chart-box" style="height:350px">
+      <canvas id="evoVotesC" role="img"></canvas>
+    </div>
+    <div class="evo-nota" id="evoNota"></div>
+  </div>
+</div>
+
+<div id="sec-regiones" class="sec">
+  <div id="reg-loading" style="color:var(--faint);font-size:12px;padding-bottom:1rem;display:none">
+      Cargando datos regionales…
+  </div>
+  
+  <div class="two-col" style="grid-template-columns: 1fr 1.3fr">
+    <div class="panel">
+      <div class="ptitle">Mapa del Perú — Líder por Región</div>
+      <div id="mapContainer" style="width: 100%; height: 460px; display:flex; justify-content:center; align-items:center;">
+          <div style="color:var(--muted);font-size:12px">Generando mapa interactivo...</div>
+      </div>
+      <div id="mapLegend" class="map-legend-container" style="display:none;"></div>
+    </div>
+    
+    <div class="panel">
+      <div class="ptitle">Detalle Regional</div>
+      <div class="rdet" id="regDet" style="border:none; box-shadow:none; padding:0">
+         <div style="text-align:center; padding:3rem 1rem; color:var(--faint)">
+            <p style="font-size:32px; margin-bottom:10px">🗺️</p>
+            Haz clic en un departamento del mapa<br>para ver los resultados oficiales detallados.
+         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="mapTooltip" class="map-tooltip"></div>
+
+</div>
+<script>
+const PROXY  = "http://localhost:8765";
+const COLORS = [
+  "#185FA5","#A32D2D","#3B6D11","#854F0B","#534AB7",
+  "#0F6E56","#8B6900","#5a2d82","#555","#333"
+];
+
+const EVO = {
+  labels: ["0.008%","10.400%","21.700%","30.000%","39.400%","42.800%","53.886%"],
+  top7: [
+    {n:"Fujimori",     p:"Fuerza Popular",          c:"#A32D2D", 
+     d:[10.7, 16.7, 16.9, 17.0, 17.0, 17.1, 16.961],
+     v:[150, 200000, 450000, 700000, 1000000, 1250000, 1670250]},
+    {n:"López Aliaga", p:"Renovación Popular",       c:"#185FA5", 
+     d:[22.7, 22.0, 21.1, 18.0, 20.8, 20.5, 14.499],
+     v:[300, 250000, 500000, 750000, 1050000, 1300000, 1427769]},
+    {n:"Nieto",        p:"Buen Gobierno",            c:"#3B6D11", 
+     d:[17.7, 16.1, 16.1, 14.0, 15.7, 15.6, 12.786],
+     v:[200, 180000, 400000, 600000, 850000, 1000000, 1259068]},
+    {n:"Belmont",      p:"Cívico Obras",             c:"#534AB7", 
+     d:[ 0.0,  8.3,  8.5,  9.0,  8.6,  8.6,  9.857],
+     v:[  0,  80000, 200000, 350000, 550000, 750000, 970658]},
+    {n:"Álvarez",      p:"País para Todos",          c:"#854F0B", 
+     d:[11.0,  8.8,  8.9,  8.0,  8.9,  9.0,  8.446],
+     v:[100,  90000, 220000, 380000, 600000, 800000, 831675]},
+    {n:"Sánchez",      p:"Juntos por el Perú",       c:"#0F6E56", 
+     d:[ 5.0,  5.5,  6.0,  7.0,  6.5,  6.8,  8.013],
+     v:[ 50,  60000, 150000, 300000, 450000, 600000, 789058]},
+    {n:"López Chau",   p:"Ahora Nación",             c:"#8B6900", 
+     d:[ 7.0,  6.8,  6.5,  6.0,  6.5,  6.8,  7.621],
+     v:[ 80,  70000, 160000, 280000, 420000, 580000, 750464]},
+  ]
+};
+
+let DATA = null, selReg = null;
+let donutChart = null, evoChart = null, evoVotesChart = null;
+let geoJsonData = null; 
+
+async function doRefresh() {
+  const btn=document.getElementById("refreshBtn");
+  const sp =document.getElementById("spin");
+  const bt =document.getElementById("btnTxt");
+  btn.disabled=true; sp.style.display="block"; bt.textContent="Consultando…";
+  try {
+    await fetch(`${PROXY}/api/refresh`, {signal:AbortSignal.timeout(45000)});
+    const d = await fetch(`${PROXY}/api/datos`,{signal:AbortSignal.timeout(10000)}).then(r=>r.json());
+    DATA = d;
+    addEvoPoint(d);
+    render();
+    const src = d.fuente==="api_onpe"         ? "✅ ONPE en vivo" :
+                d.fuente==="api_onpe_parcial"  ? "🟡 ONPE parcial" : "⚠️ datos locales";
+    setAlert("ok", `${src} — ${(+d.pctActas).toFixed(3)}% de actas · ${d.regiones?.length||0} regiones cargadas`);
+    setTimeout(()=>setAlert("",""), 6000);
+  } catch(e) {
+    setAlert("warn", `⚠️ <strong>Proxy no responde.</strong> Ejecuta: <code>python3 onpe_proxy.py</code>`);
+  } finally {
+    btn.disabled=false; sp.style.display="none"; bt.textContent="↻ Actualizar";
+  }
+}
+
+async function silentPoll() {
+  try {
+    const d = await fetch(`${PROXY}/api/datos`,{signal:AbortSignal.timeout(8000)}).then(r=>r.json());
+    if (d.timestamp !== DATA?.timestamp) {
+      DATA = d; addEvoPoint(d); render();
+      setAlert("ok", `🔄 Actualizado automáticamente — ${(+d.pctActas).toFixed(3)}% actas`);
+      setTimeout(()=>setAlert("",""), 4000);
+    }
+    setPill(d.fuente);
+  } catch(e) {}
+}
+
+function addEvoPoint(d) {
+  const pct = +d.pctActas;
+  const lastLabel = EVO.labels[EVO.labels.length - 1]; 
+  
+  if (!pct || pct <= +lastLabel.replace('%','') + 0.001) return;
+  const lbl = pct.toFixed(3)+"%"; 
+  EVO.labels.push(lbl);
+  EVO.top7.forEach((cm) => {
+    const c = (d.candidatos || []).find(x =>
+      x.partido.toUpperCase().includes(cm.p.toUpperCase().split(" ")[0]) ||
+      x.nombre.toLowerCase().includes(cm.n.toLowerCase().split(" ")[cm.n.toLowerCase().split(" ").length - 1])
+    );
+    cm.d.push(c ? +c.pct : (cm.d[cm.d.length - 1]||0));
+    cm.v.push(c ? +c.votos : (cm.v[cm.v.length - 1]||0));
+  });
+}
+
+function render() {
+  if (!DATA) return;
+  renderStats();
+  renderCands();
+  renderResumen();
+  renderDonut();
+  if (document.getElementById("sec-evolucion").classList.contains("active")) renderEvo();
+  if (document.getElementById("sec-regiones").classList.contains("active"))  renderMapAndRegions();
+  setPill(DATA.fuente);
+}
+
+function renderStats() {
+  const d = DATA;
+  const pct  = (+d.pctActas||0).toFixed(3);
+  const cont = (+d.actasContabilizadas||0).toLocaleString("es-PE");
+  const tot  = (+d.actasTotales||92766);
+  const pend = +d.actasPendientes||0;
+  const jee  = +d.actasJEE||0;
+  const emit = +d.votosEmitidos||0;
+  const part = +d.participacion||0;
+
+  document.getElementById("sPct").textContent   = pct+"%";
+  document.getElementById("sActas").textContent = `${cont} de ${tot.toLocaleString("es-PE")}`;
+  document.getElementById("sPend").textContent  = pend.toLocaleString("es-PE");
+  document.getElementById("sPendPct").textContent = `${((pend/tot)*100).toFixed(1)}% del total`;
+  document.getElementById("sJEE").textContent   = jee.toLocaleString("es-PE");
+  document.getElementById("sEmitidos").textContent = emit>0 ? emit.toLocaleString("es-PE") : "–";
+  document.getElementById("sParticipacion").textContent = part>0 ? `participación: ${part.toFixed(2)}%` : "–";
+  document.getElementById("progLbl").textContent = pct+"%";
+  document.getElementById("progFill").style.width = Math.min(+d.pctActas||0,100)+"%";
+  const ts = d.timestamp||d.serverTime;
+  if (ts) document.getElementById("lastUpdate").textContent =
+    "Corte: " + new Date(ts).toLocaleString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+
+function renderCands() {
+  const cands = [...(DATA.candidatos||[])].sort((a,b)=>b.pct-a.pct);
+  if (!cands.length) return;
+  const max = cands[0].pct;
+  const totalEmitidos = +DATA.votosEmitidos || 0;
+
+  document.getElementById("candList").innerHTML = cands.map((c,i)=>{
+    const col = COLORS[i]||COLORS[COLORS.length - 1];
+    const bw  = (c.pct/max*100).toFixed(1);
+    const rc  = i===0?"r1":i===1?"r2":i===2?"r3":"";
+    const pctEmitidos = totalEmitidos>0 && c.votos>0
+      ? `<div class="cpct-emitidos">${((c.votos/totalEmitidos)*100).toFixed(2)}% s/emitidos</div>` : "";
+    const votos = c.votos>0
+      ? `<div class="cvotos">${c.votos.toLocaleString("es-PE")} votos</div>` : "";
+    return `<div class="crow ${rc}">
+      <div class="rank-badge" style="background:${col}">${i+1}</div>
+      <div class="cinfo">
+        <div class="cname">${c.nombre}</div>
+        <div class="cparty">${c.partido}</div>
+        ${votos}
+      </div>
+      <div class="cbar-wrap">
+        <div class="ctrack"><div class="cfill" style="width:${bw}%;background:${col}"></div></div>
+      </div>
+      <div class="cpct-col">
+        <div class="cpct" style="color:${col}">${(+c.pct).toFixed(3)}%</div>
+        ${pctEmitidos}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderResumen() {
+  const d = DATA;
+  const vv = +d.votosValidos||0;
+  const ve = +d.votosEmitidos||0;
+  const vb = +d.votosBlancos||0;
+  const vn = +d.votosNulos||0;
+  const pctB = vv>0 ? ((vb/(vv+vb+vn))*100).toFixed(2)+"%" : "–";
+  const pctN = vv>0 ? ((vn/(vv+vb+vn))*100).toFixed(2)+"%" : "–";
+
+  const cards = [
+    {l:"Actas totales",    v: (+d.actasTotales||92766).toLocaleString("es-PE"), s:""},
+    {l:"Contabilizadas",   v: (+d.actasContabilizadas||0).toLocaleString("es-PE"), s:(+d.pctActas||0).toFixed(3)+"%"},
+    {l:"Pendientes",       v: (+d.actasPendientes||0).toLocaleString("es-PE"), s:"sin procesar"},
+    {l:"Enviadas al JEE",  v: (+d.actasJEE||0).toLocaleString("es-PE"), s:"observadas"},
+    {l:"Votos emitidos",   v: ve>0?ve.toLocaleString("es-PE"):"–", s:d.participacion>0?(+d.participacion).toFixed(2)+"% participación":""},
+    {l:"Votos válidos",    v: vv>0?vv.toLocaleString("es-PE"):"–", s:ve>0&&vv>0?((vv/ve)*100).toFixed(2)+"% s/emitidos":""},
+    {l:"Votos en blanco",  v: vb>0?vb.toLocaleString("es-PE"):"–", s:pctB},
+    {l:"Votos nulos",      v: vn>0?vn.toLocaleString("es-PE"):"–", s:pctN},
+  ];
+  document.getElementById("resumen").innerHTML = cards.map(c=>
+    `<div class="res-card">
+      <div class="res-label">${c.l}</div>
+      <div class="res-value">${c.v}</div>
+      ${c.s?`<div class="res-sub">${c.s}</div>`:""}
+    </div>`
+  ).join("");
+}
+
+function renderDonut() {
+  const cands = [...(DATA.candidatos||[])].sort((a,b)=>b.pct-a.pct).slice(0,8);
+  if (!cands.length) return;
+  const surf = getComputedStyle(document.body).getPropertyValue("--surface").trim()||"#fff";
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(document.getElementById("donutC"),{
+    type:"doughnut",
+    data:{
+      labels: cands.map(c=>c.nombre),
+      datasets:[{data:cands.map(c=>+c.pct),backgroundColor:cands.map((_,i)=>COLORS[i]),borderWidth:2,borderColor:surf}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,cutout:"58%",
+      plugins:{
+        legend:{display:true,position:"right",labels:{boxWidth:11,font:{size:11},padding:9}},
+        tooltip:{callbacks:{label:i=>` ${i.label}: ${i.parsed.toFixed(3)}%`}}
+      }
+    }
+  });
+}
+
+function renderEvo() {
+  const isDark = matchMedia("(prefers-color-scheme:dark)").matches;
+  const gc=isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)";
+  const tc=isDark?"rgba(255,255,255,.4)":"rgba(0,0,0,.45)";
+  const ttb=isDark?"#2a2a2e":"#fff";
+  const ttd=isDark?"#444":"#ddd";
+
+  document.getElementById("evoLeg").innerHTML = EVO.top7.map(m=>
+    `<div class="leg">
+      <div class="ldot" style="background:${m.c}"></div>
+      <span class="leg-name">${m.n}</span>
+      <span style="color:var(--faint);font-size:10px">&nbsp;·&nbsp;${m.p}</span>
+    </div>`).join("");
+
+  document.getElementById("evoNota").innerHTML =
+    `Cómputo oficial ONPE. Los primeros puntos tienen sesgo urbano (Lima + exterior), que infló a López Aliaga. ` +
+    `Cada actualización agrega automáticamente un nuevo punto al gráfico.`;
+
+  const dashes=[[],[],[6,3],[3,3],[8,4],[4,4],[2,3]];
+
+  if (evoChart) evoChart.destroy();
+  evoChart = new Chart(document.getElementById("evoC"),{
+    type:"line",
+    data:{
+      labels: EVO.labels,
+      datasets: EVO.top7.map((m,i)=>({
+        label:m.n, data:m.d,
+        borderColor:m.c, backgroundColor:m.c+"15",
+        borderWidth:2.5, borderDash:dashes[i]||[],
+        pointRadius:5,pointHoverRadius:7,
+        pointBackgroundColor:m.c,pointBorderColor:"#fff",pointBorderWidth:1.5,
+        tension:.3,fill:false
+      }))
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:"index",intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
+          titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
+          titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
+          callbacks:{
+            title:i=>`Actas contabilizadas: ${i[0].label}`,
+            label:i=>` ${i.dataset.label}: ${i.parsed.y.toFixed(3)}%`
+          }
+        }
+      },
+      scales:{
+        x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxRotation:0}},
+        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>v.toFixed(1)+"%"},min:0,suggestedMax:26}
+      }
+    }
+  });
+
+  if (evoVotesChart) evoVotesChart.destroy();
+  evoVotesChart = new Chart(document.getElementById("evoVotesC"),{
+    type:"bar",
+    data:{
+      labels: EVO.labels,
+      datasets: EVO.top7.map(m=>({
+        label:m.n, data:m.v,
+        backgroundColor:m.c,
+        borderRadius: 4,
+        borderWidth: 0
+      }))
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:"index",intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
+          titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
+          titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
+          callbacks:{
+            title:i=>`Actas contabilizadas: ${i[0].label}`,
+            label:i=>` ${i.dataset.label}: ${i.parsed.y.toLocaleString("es-PE")} votos`
+          }
+        }
+      },
+      scales:{
+        x:{grid:{display:false},ticks:{color:tc,font:{size:11},maxRotation:0}},
+        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>(v/1000000).toFixed(1)+"M"}}
+      }
+    }
+  });
+}
+
+function normalizeMapName(str) {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+}
+
+function getCandidateColorByGlobalList(candName) {
+  if (!DATA || !DATA.candidatos) return "#a0a09a";
+  const idx = DATA.candidatos.findIndex(c => c.nombre === candName);
+  return idx !== -1 && COLORS[idx] ? COLORS[idx] : "#a0a09a";
+}
+
+// Nueva función global para deseleccionar región desde el botón "Cerrar"
+window.deselectRegion = () => {
+    selReg = null;
+    d3.selectAll("path")
+      .style("opacity", 1)
+      .attr("stroke", "var(--surface)")
+      .attr("stroke-width", 0.8);
+    renderRegDet();
+};
+
+async function renderMapAndRegions() {
+  if (!DATA) return;
+  const regs = DATA.regiones || [];
+  
+  if (!geoJsonData) {
+    try {
+        geoJsonData = await fetch(`${PROXY}/api/mapa`).then(r => r.json());
+    } catch(e) {
+        document.getElementById("mapContainer").innerHTML = `<div style="color:var(--red)">No se pudo cargar el mapa. Verifica la conexión del proxy.</div>`;
+        return;
+    }
+  }
+
+  const legendDiv = document.getElementById("mapLegend");
+  const topCands = (DATA.candidatos || []).slice(0, 7); 
+  if (topCands.length > 0) {
+      legendDiv.innerHTML = topCands.map((c, i) => `
+        <div class="leg">
+          <div class="ldot" style="background:${COLORS[i]}"></div>
+          <span class="leg-name">${c.nombre}</span>
+        </div>`).join("");
+      legendDiv.style.display = "flex";
+  }
+
+  const container = d3.select("#mapContainer");
+  container.selectAll("*").remove(); 
+
+  const width = container.node().getBoundingClientRect().width || 400;
+  const height = 460;
+  
+  const svg = container.append("svg")
+      .attr("width", "100%")
+      .attr("height", height)
+      .style("overflow", "visible");
+
+  const projection = d3.geoMercator().fitSize([width, height], geoJsonData);
+  const path = d3.geoPath().projection(projection);
+  const tooltip = d3.select("#mapTooltip");
+
+  svg.selectAll("path")
+      .data(geoJsonData.features)
+      .enter()
+      .append("path")
+      .attr("d", path)
+      .attr("stroke", "var(--surface)")
+      .attr("stroke-width", 0.8)
+      .attr("fill", d => {
+          const mName = normalizeMapName(d.properties.name);
+          const r = regs.find(reg => normalizeMapName(reg.nombre) === mName);
+          return (r && r.lider) ? getCandidateColorByGlobalList(r.lider) : "var(--surface2)";
+      })
+      // Ajuste para mantener la opacidad correcta si ya hay una región seleccionada al hacer refresh
+      .style("opacity", function(d) {
+          if (selReg === null) return 1;
+          const mName = normalizeMapName(d.properties.name);
+          const idx = regs.findIndex(reg => normalizeMapName(reg.nombre) === mName);
+          return idx === selReg ? 1 : 0.4;
+      })
+      .style("cursor", "pointer")
+      .style("transition", "opacity 0.2s")
+      .on("mouseover", function(event, d) {
+          d3.select(this).attr("stroke", "var(--text)").attr("stroke-width", 1.5);
+          
+          const mName = normalizeMapName(d.properties.name);
+          const r = regs.find(reg => normalizeMapName(reg.nombre) === mName);
+          
+          let html = `<div class="title">${d.properties.name.toUpperCase()}</div>`;
+          if (r) {
+              const cColor = getCandidateColorByGlobalList(r.lider);
+              html += `<div class="lider"><div class="ldot" style="background:${cColor}"></div>${r.lider} — ${r.pctLider}%</div>`;
+              html += `<div style="font-size:10px;color:var(--faint);margin-top:4px;">Actas contab: ${r.pctActas}%</div>`;
+          } else {
+              html += `<div style="font-size:11px;color:var(--faint);">Sin datos oficiales</div>`;
+          }
+
+          tooltip.html(html).style("opacity", 1);
+      })
+      .on("mousemove", function(event) {
+          tooltip.style("left", (event.pageX + 15) + "px")
+                 .style("top", (event.pageY - 15) + "px");
+      })
+      .on("mouseout", function() {
+          d3.select(this).attr("stroke", "var(--surface)").attr("stroke-width", 0.8);
+          tooltip.style("opacity", 0);
+      })
+      .on("click", function(event, d) {
+          const mName = normalizeMapName(d.properties.name);
+          const idx = regs.findIndex(reg => normalizeMapName(reg.nombre) === mName);
+          
+          if (idx !== -1) {
+              if (selReg === idx) {
+                  // Deseleccionar al hacer clic de nuevo en la misma región
+                  window.deselectRegion();
+              } else {
+                  // Seleccionar nueva región
+                  selReg = idx;
+                  d3.selectAll("path").style("opacity", 0.4);
+                  d3.select(this).style("opacity", 1);
+                  renderRegDet();
+              }
+          }
+      });
+      
+  // Renderizar el recuadro de la derecha independientemente de si hay selección o no
+  renderRegDet();
+}
+
+function renderRegDet() {
+  const el = document.getElementById("regDet");
+  
+  if (selReg === null || !DATA.regiones?.[selReg]) { 
+      // Pantalla por defecto (Mapa Nacional Activo)
+      el.innerHTML = `
+         <div style="text-align:center; padding:5rem 1rem; color:var(--faint)">
+            <p style="font-size:36px; margin-bottom:15px">🗺️</p>
+            <h3 style="color:var(--text); font-size:16px; margin-bottom:5px;">Mapa Nacional</h3>
+            <p style="font-size:13px; line-height:1.6;">Haz clic en un departamento del mapa para ver los resultados oficiales detallados de esa región.</p>
+         </div>`;
+      el.classList.add("show"); 
+      return; 
+  }
+  
+  const r  = DATA.regiones[selReg];
+  const mx = r.candidatos?.[0]?.pct||100;
+  
+  el.innerHTML = `
+    <div class="rdet-title" style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div>
+        📍 ${r.nombre.toUpperCase()}
+        <span style="display:block; font-size:11px; font-weight:400; color:var(--muted); margin-top:2px;">
+          ~${(+r.pctActas).toFixed(1)}% de actas contabilizadas
+        </span>
+      </div>
+      <button class="btn" onclick="deselectRegion()" style="padding: 4px 10px; font-size:11px; background:var(--surface2); border:none;">
+        ✕ Cerrar
+      </button>
+    </div>
+    <div class="clist" style="max-height: 380px; overflow-y: auto; padding-right:5px;">${(r.candidatos||[]).map((c,i)=>`
+      <div class="crow">
+        <div class="rank-badge" style="background:${COLORS[i]||COLORS[COLORS.length - 1]};width:22px;height:22px;font-size:10px">${i+1}</div>
+        <div class="cinfo"><div class="cname" style="font-size:12px">${c.nombre}</div><div class="cparty">${c.partido}</div></div>
+        <div class="cbar-wrap">
+          <div class="ctrack"><div class="cfill" style="width:${(c.pct/mx*100).toFixed(1)}%;background:${COLORS[i]||COLORS[COLORS.length - 1]}"></div></div>
+        </div>
+        <div class="cpct-col">
+          <div class="cpct" style="color:${COLORS[i]||COLORS[COLORS.length - 1]};font-size:14px">${(+c.pct).toFixed(3)}%</div>
+          <div style="font-size:9px;color:var(--faint);margin-top:2px">${c.votos.toLocaleString('es-PE')} votos</div>
+        </div>
+      </div>`).join("")}
+    </div>`;
+  el.classList.add("show");
+}
+
+function setPill(f) {
+  const el = document.getElementById("sourcePill");
+  if (f==="api_onpe")        { el.className="pill pill-live";     el.textContent="🟢 ONPE en vivo"; }
+  else if(f==="api_onpe_parcial"){ el.className="pill pill-partial"; el.textContent="🟡 ONPE parcial"; }
+  else                        { el.className="pill pill-fallback"; el.textContent="🔴 datos locales"; }
+}
+function setAlert(type, html) {
+  const el = document.getElementById("alertBox");
+  if (!type) { el.innerHTML=""; return; }
+  el.innerHTML = `<div class="alert ${type}">${html}</div>`;
+}
+window.showSec = (id,btn) => {
+  document.querySelectorAll(".sec").forEach(s=>s.classList.remove("active"));
+  document.querySelectorAll(".tabs .tab").forEach(b=>b.classList.remove("active"));
+  document.getElementById("sec-"+id).classList.add("active");
+  btn.classList.add("active");
+  if (id==="evolucion") renderEvo();
+  if (id==="regiones")  renderMapAndRegions();
+};
+
+setAlert("info","⏳ Conectando al proxy… <code>python3 onpe_proxy.py</code> → <strong>↻ Actualizar</strong>");
+setTimeout(()=>silentPoll(), 600);
+setInterval(()=>silentPoll(), 60000);
+</script>
+</body>
+</html>

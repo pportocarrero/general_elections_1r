@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ONPE 2026 — Resultados Presidenciales</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root{
+  --bg:#f5f4f0;--surface:#fff;--surface2:#f0efe9;
+  --border:rgba(0,0,0,.09);--border2:rgba(0,0,0,.18);
+  --text:#1a1a18;--muted:#6b6b65;--faint:#9b9b93;
+  --blue:#185FA5;--red:#A32D2D;--green:#3B6D11;
+  --amber:#854F0B;--purple:#534AB7;--teal:#0F6E56;
+  --r:10px;--sh:0 1px 4px rgba(0,0,0,.08);
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#18181a;--surface:#232327;--surface2:#2c2c31;
+  --border:rgba(255,255,255,.09);--border2:rgba(255,255,255,.20);
+  --text:#e8e8e2;--muted:#a0a09a;--faint:#58585a;
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px 6px;border-radius:4px}
+.app{max-width:1180px;margin:0 auto;padding:1.5rem 1rem 4rem}
+
+/* Top bar */
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:10px}
+.logo h1{font-size:18px;font-weight:700;letter-spacing:-.3px}
+.logo p{font-size:11px;color:var(--muted);margin-top:2px}
+.topright{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#lastUpdate{font-size:11px;color:var(--faint)}
+.pill{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;border:1px solid;letter-spacing:.04em;text-transform:uppercase}
+.pill-live    {background:#e8f5ec;color:#1a4a28;border-color:#6ee7b0}
+.pill-partial {background:#fef3e2;color:#6b3d00;border-color:#f59e0b}
+.pill-fallback{background:#fdecea;color:#6b1a1a;border-color:#f87171}
+@media(prefers-color-scheme:dark){
+  .pill-live    {background:#0d2e18;color:#6ee7b7;border-color:#1a4a28}
+  .pill-partial {background:#2d1f00;color:#fbbf24;border-color:#4d3300}
+  .pill-fallback{background:#2d0e0e;color:#fca5a5;border-color:#5a1a1a}
+}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;transition:background .15s}
+.btn:hover{background:var(--surface2)}
+.btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn.primary:hover{opacity:.88}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.spin{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+/* Alert */
+.alert{padding:9px 14px;border-radius:var(--r);font-size:12px;margin-bottom:.85rem;line-height:1.7}
+.alert.info{background:#e8f0fb;color:#1a3a6a;border:1px solid #b5d0f2}
+.alert.warn{background:#fef3e2;color:#6b4100;border:1px solid #f7d99c}
+.alert.ok  {background:#e8f5ec;color:#1a4a28;border:1px solid #9dd6b0}
+@media(prefers-color-scheme:dark){
+  .alert.info{background:#0d2240;color:#93c5fd;border-color:#1e3a5f}
+  .alert.warn{background:#2d1f00;color:#fbbf24;border-color:#4d3300}
+  .alert.ok  {background:#0d2e18;color:#6ee7b7;border-color:#1a4a28}
+}
+#alertBox{margin-bottom:.5rem}
+
+/* KPI bar */
+.statbar{display:flex;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:1.2rem;box-shadow:var(--sh)}
+.stat{flex:1;min-width:130px;padding:12px 18px;border-right:1px solid var(--border)}
+.stat:last-child{border-right:none}
+.slbl{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
+.sval{font-size:22px;font-weight:700;line-height:1.1}
+.ssub{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* Progress */
+.prog-wrap{margin-bottom:1.2rem}
+.prog-head{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
+.prog-track{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+.prog-fill{height:100%;background:var(--blue);border-radius:4px;transition:width .6s ease}
+
+/* Tabs */
+.tabs{display:flex;gap:4px;margin-bottom:1.1rem;flex-wrap:wrap}
+.tab{font-size:12px;font-weight:500;padding:6px 14px;border-radius:var(--r);border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.tab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.sec{display:none}.sec.active{display:block}
+
+/* Layout */
+.two-col{display:grid;grid-template-columns:1.4fr 1fr;gap:1rem;margin-bottom:1rem}
+@media(max-width:720px){.two-col{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.1rem 1.25rem;box-shadow:var(--sh)}
+.ptitle{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.85rem;display:flex;align-items:center;gap:6px}
+.full{grid-column:1/-1}
+
+/* ── Candidate rows (mejorado) ── */
+.clist{display:flex;flex-direction:column;gap:4px}
+.crow{
+  display:grid;
+  grid-template-columns:28px 220px 1fr 80px;
+  align-items:center;gap:10px;
+  padding:9px 12px;border-radius:8px;
+  border:1px solid var(--border);
+  transition:border-color .15s,background .15s;
+}
+.crow:hover{background:var(--surface2)}
+.crow.r1{border-color:var(--blue);background:rgba(24,95,165,.04)}
+.crow.r2{border-color:var(--red);background:rgba(163,45,45,.04)}
+.crow.r3{border-color:var(--green);background:rgba(59,109,17,.04)}
+@media(prefers-color-scheme:dark){
+  .crow.r1{background:rgba(24,95,165,.08)}
+  .crow.r2{background:rgba(163,45,45,.08)}
+  .crow.r3{background:rgba(59,109,17,.08)}
+}
+.rank-badge{
+  width:24px;height:24px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:#fff;flex-shrink:0;
+}
+.cinfo .cname{font-size:13px;font-weight:600}
+.cinfo .cparty{font-size:11px;color:var(--muted);margin-top:1px}
+.cinfo .cvotos{font-size:10px;color:var(--faint);margin-top:2px}
+.cbar-wrap{display:flex;flex-direction:column;gap:4px}
+.ctrack{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.cfill{height:100%;border-radius:4px;transition:width .6s}
+.cpct-col{text-align:right}
+.cpct{font-size:17px;font-weight:700;line-height:1}
+.cpct-emitidos{font-size:10px;color:var(--faint);margin-top:2px}
+
+/* Resumen */
+.resumen-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.res-card{background:var(--surface2);border-radius:8px;padding:10px 12px}
+.res-label{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.res-value{font-size:18px;font-weight:700}
+.res-sub{font-size:11px;color:var(--muted);margin-top:1px}
+
+/* Evolución */
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:.75rem}
+.leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer}
+.leg:hover .leg-name{color:var(--text)}
+.ldot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.leg-name{font-weight:500}
+.chart-box{position:relative;width:100%}
+.evo-nota{font-size:11px;color:var(--muted);margin-top:.65rem;padding:8px 12px;background:var(--surface2);border-radius:var(--r);line-height:1.6}
+
+/* Regiones */
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:7px}
+.rcard{padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.rcard:hover{border-color:var(--border2);box-shadow:var(--sh)}
+.rcard.sel{border-color:var(--blue);box-shadow:0 0 0 2px rgba(24,95,165,.12)}
+.rname{font-size:12px;font-weight:700;margin-bottom:2px}
+.rlider{font-size:11px;color:var(--blue);font-weight:500}
+.rpct{font-size:22px;font-weight:700;margin-top:2px}
+.ractas{font-size:10px;color:var(--faint);margin-top:2px}
+.rdet{display:none;margin-top:.85rem;padding:1rem 1.1rem;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);box-shadow:var(--sh)}
+.rdet.show{display:block}
+.rdet-title{font-size:14px;font-weight:700;margin-bottom:.75rem;color:var(--text)}
+.rdet .crow{grid-template-columns:24px 180px 1fr 70px}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="topbar">
+  <div class="logo">
+    <h1>🗳️ ONPE 2026 — Resultados Presidenciales</h1>
+    <p>Elecciones Generales · Primera Vuelta · 12 de abril 2026 · Cómputo oficial</p>
+  </div>
+  <div class="topright">
+    <span id="sourcePill" class="pill pill-fallback">sin datos</span>
+    <span id="lastUpdate"></span>
+    <button class="btn primary" id="refreshBtn" onclick="doRefresh()">
+      <span class="spin" id="spin"></span>
+      <span id="btnTxt">↻ Actualizar</span>
+    </button>
+  </div>
+</div>
+
+<div id="alertBox"></div>
+
+<!-- KPIs -->
+<div class="statbar">
+  <div class="stat">
+    <div class="slbl">Actas contabilizadas</div>
+    <div class="sval" id="sPct">–</div>
+    <div class="ssub" id="sActas">–</div>
+  </div>
+  <div class="stat">
+    <div class="slbl">Actas pendientes</div>
+    <div class="sval" id="sPend">–</div>
+    <div class="ssub" id="sPendPct">–</div>
+  </div>
+  <div class="stat">
+    <div class="slbl">Actas al JEE</div>
+    <div class="sval" id="sJEE">–</div>
+    <div class="ssub">obs. / impugnadas</div>
+  </div>
+  <div class="stat">
+    <div class="slbl">Votos emitidos</div>
+    <div class="sval" id="sEmitidos">–</div>
+    <div class="ssub" id="sParticipacion">–</div>
+  </div>
+  <div class="stat">
+    <div class="slbl">Segunda vuelta</div>
+    <div class="sval" style="font-size:15px;padding-top:3px">7 jun 2026</div>
+    <div class="ssub">pendiente confirmación</div>
+  </div>
+</div>
+
+<!-- PROGRESS -->
+<div class="prog-wrap">
+  <div class="prog-head">
+    <span>Avance del cómputo oficial ONPE</span>
+    <span id="progLbl">–</span>
+  </div>
+  <div class="prog-track"><div class="prog-fill" id="progFill" style="width:0%"></div></div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab active" onclick="showSec('nacional',this)">Nacional</button>
+  <button class="tab"        onclick="showSec('evolucion',this)">Evolución</button>
+  <button class="tab"        onclick="showSec('regiones',this)">Regiones</button>
+</div>
+
+<!-- NACIONAL -->
+<div id="sec-nacional" class="sec active">
+  <div class="two-col">
+    <div class="panel full">
+      <div class="ptitle">Candidatos — % de votos válidos</div>
+      <div class="clist" id="candList">
+        <div style="color:var(--faint);padding:1rem 0">Cargando…</div>
+      </div>
+    </div>
+  </div>
+  <div class="two-col">
+    <div class="panel">
+      <div class="ptitle">Distribución — votos válidos</div>
+      <div class="chart-box" style="height:280px">
+        <canvas id="donutC" role="img" aria-label="Distribución de votos por candidato"></canvas>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ptitle">Resumen del cómputo</div>
+      <div class="resumen-grid" id="resumen"></div>
+    </div>
+  </div>
+</div>
+
+<!-- EVOLUCIÓN -->
+<div id="sec-evolucion" class="sec">
+  <div class="panel full">
+    <div class="ptitle">Evolución top 7 candidatos — % votos válidos por avance de actas</div>
+    <div class="legend" id="evoLeg"></div>
+    <div class="chart-box" style="height:380px">
+      <canvas id="evoC" role="img" aria-label="Evolución porcentajes por avance de actas"></canvas>
+    </div>
+    <div class="evo-nota" id="evoNota"></div>
+  </div>
+</div>
+
+<!-- REGIONES -->
+<div id="sec-regiones" class="sec">
+  <div class="panel full">
+    <div class="ptitle">Resultados por región — clic para ver detalle por candidato</div>
+    <div id="reg-loading" style="color:var(--faint);font-size:12px;padding:.5rem 0;display:none">
+      Cargando datos regionales…
+    </div>
+    <div class="rgrid" id="regGrid"></div>
+    <div class="rdet" id="regDet"></div>
+  </div>
+</div>
+
+</div>
+<script>
+const PROXY  = "http://localhost:8765";
+const COLORS = [
+  "#185FA5","#A32D2D","#3B6D11","#854F0B","#534AB7",
+  "#0F6E56","#8B6900","#5a2d82","#555","#333",
+  "#0d47a1","#880e4f","#1b5e20","#bf360c","#311b92",
+];
+
+// ── Series históricas (top 7 del cómputo oficial ONPE)
+// Fuente: medios peruanos + datos reales al 53.9%
+const EVO = {
+  labels: ["0.008%","10.4%","21.7%","30.0%","39.4%","42.8%","53.9%"],
+  top7: [
+    {n:"Fujimori",     p:"Fuerza Popular",          c:"#A32D2D", d:[10.7,16.7,16.9,17.0,17.0,17.1,17.0]},
+    {n:"López Aliaga", p:"Renovación Popular",       c:"#185FA5", d:[22.7,22.0,21.1,18.0,20.8,20.5,14.5]},
+    {n:"Nieto",        p:"Buen Gobierno",            c:"#3B6D11", d:[17.7,16.1,16.1,14.0,15.7,15.6,12.8]},
+    {n:"Belmont",      p:"Cívico Obras",             c:"#534AB7", d:[ 0.0, 8.3, 8.5, 9.0, 8.6, 8.6, 9.9]},
+    {n:"Álvarez",      p:"País para Todos",          c:"#854F0B", d:[11.0, 8.8, 8.9, 8.0, 8.9, 9.0, 8.4]},
+    {n:"Sánchez",      p:"Juntos por el Perú",       c:"#0F6E56", d:[ 5.0, 5.5, 6.0, 7.0, 6.5, 6.8, 8.0]},
+    {n:"López Chau",   p:"Ahora Nación",             c:"#8B6900", d:[ 7.0, 6.8, 6.5, 6.0, 6.5, 6.8, 7.6]},
+  ]
+};
+
+let DATA = null, selReg = null, donutChart = null, evoChart = null;
+
+// ── FETCH ──────────────────────────────────────────────────────
+async function doRefresh() {
+  const btn=document.getElementById("refreshBtn");
+  const sp =document.getElementById("spin");
+  const bt =document.getElementById("btnTxt");
+  btn.disabled=true; sp.style.display="block"; bt.textContent="Consultando…";
+  try {
+    await fetch(`${PROXY}/api/refresh`, {signal:AbortSignal.timeout(15000)});
+    const d = await fetch(`${PROXY}/api/datos`,{signal:AbortSignal.timeout(10000)}).then(r=>r.json());
+    DATA = d;
+    addEvoPoint(d);
+    render();
+    const src = d.fuente==="api_onpe"         ? "✅ ONPE en vivo" :
+                d.fuente==="api_onpe_parcial"  ? "🟡 ONPE parcial" : "⚠️ datos locales";
+    setAlert("ok", `${src} — ${(+d.pctActas).toFixed(3)}% de actas · ${d.candidatos?.length||0} candidatos`);
+    setTimeout(()=>setAlert("",""), 6000);
+  } catch(e) {
+    setAlert("warn", `⚠️ <strong>Proxy no responde.</strong> Ejecuta: <code>python3 onpe_proxy.py</code>`);
+  } finally {
+    btn.disabled=false; sp.style.display="none"; bt.textContent="↻ Actualizar";
+  }
+}
+
+async function silentPoll() {
+  try {
+    const d = await fetch(`${PROXY}/api/datos`,{signal:AbortSignal.timeout(8000)}).then(r=>r.json());
+    if (d.timestamp !== DATA?.timestamp) {
+      DATA = d; addEvoPoint(d); render();
+      setAlert("ok", `🔄 Actualizado automáticamente — ${(+d.pctActas).toFixed(3)}% actas`);
+      setTimeout(()=>setAlert("",""), 4000);
+    }
+    setPill(d.fuente);
+  } catch(e) {}
+}
+
+function addEvoPoint(d) {
+  const pct = +d.pctActas;
+  if (!pct || pct <= +EVO.labels.at(-1) + 0.5) return;
+  const lbl = pct.toFixed(2)+"%";
+  EVO.labels.push(lbl);
+  const candMap = {
+    "Fuerza Popular":0, "Renovación Popular":1, "Partido Del Buen Gobierno":2,
+    "Partido Cívico Obras":3, "Partido País Para Todos":4,
+    "Juntos Por El Perú":5, "Ahora Nación - An":6,
+  };
+  EVO.top7.forEach((cm, i) => {
+    const c = d.candidatos?.find(x =>
+      x.partido.toUpperCase().includes(cm.p.toUpperCase().split(" ")[0]) ||
+      x.nombre.toLowerCase().includes(cm.n.toLowerCase().split(" ").at(-1))
+    );
+    cm.d.push(c ? +c.pct : (cm.d.at(-1)||0));
+  });
+}
+
+// ── RENDER ─────────────────────────────────────────────────────
+function render() {
+  if (!DATA) return;
+  renderStats();
+  renderCands();
+  renderResumen();
+  renderDonut();
+  if (document.getElementById("sec-evolucion").classList.contains("active")) renderEvo();
+  if (document.getElementById("sec-regiones").classList.contains("active"))  renderRegiones();
+  setPill(DATA.fuente);
+}
+
+function renderStats() {
+  const d = DATA;
+  const pct  = (+d.pctActas||0).toFixed(3);
+  const cont = (+d.actasContabilizadas||0).toLocaleString("es-PE");
+  const tot  = (+d.actasTotales||92766);
+  const pend = +d.actasPendientes||0;
+  const jee  = +d.actasJEE||0;
+  const emit = +d.votosEmitidos||0;
+  const part = +d.participacion||0;
+
+  document.getElementById("sPct").textContent   = pct+"%";
+  document.getElementById("sActas").textContent = `${cont} de ${tot.toLocaleString("es-PE")}`;
+  document.getElementById("sPend").textContent  = pend.toLocaleString("es-PE");
+  document.getElementById("sPendPct").textContent = `${((pend/tot)*100).toFixed(1)}% del total`;
+  document.getElementById("sJEE").textContent   = jee.toLocaleString("es-PE");
+  document.getElementById("sEmitidos").textContent = emit>0 ? emit.toLocaleString("es-PE") : "–";
+  document.getElementById("sParticipacion").textContent = part>0 ? `participación: ${part.toFixed(2)}%` : "–";
+  document.getElementById("progLbl").textContent = pct+"%";
+  document.getElementById("progFill").style.width = Math.min(+d.pctActas||0,100)+"%";
+  const ts = d.timestamp||d.serverTime;
+  if (ts) document.getElementById("lastUpdate").textContent =
+    "Corte: " + new Date(ts).toLocaleString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+
+function renderCands() {
+  const cands = [...(DATA.candidatos||[])].sort((a,b)=>b.pct-a.pct);
+  if (!cands.length) {
+    document.getElementById("candList").innerHTML =
+      `<div style="color:var(--faint);padding:1rem 0">Sin datos — revisa el proxy</div>`;
+    return;
+  }
+  const max = cands[0].pct;
+  // Calcular el total de votos emitidos para mostrar % sobre emitidos también
+  const totalEmitidos = +DATA.votosEmitidos || 0;
+
+  document.getElementById("candList").innerHTML = cands.map((c,i)=>{
+    const col = COLORS[i]||COLORS.at(-1);
+    const bw  = (c.pct/max*100).toFixed(1);
+    const rc  = i===0?"r1":i===1?"r2":i===2?"r3":"";
+    const pctEmitidos = totalEmitidos>0 && c.votos>0
+      ? `<div class="cpct-emitidos">${((c.votos/totalEmitidos)*100).toFixed(2)}% s/emitidos</div>` : "";
+    const votos = c.votos>0
+      ? `<div class="cvotos">${c.votos.toLocaleString("es-PE")} votos</div>` : "";
+    return `<div class="crow ${rc}">
+      <div class="rank-badge" style="background:${col}">${i+1}</div>
+      <div class="cinfo">
+        <div class="cname">${c.nombre}</div>
+        <div class="cparty">${c.partido}</div>
+        ${votos}
+      </div>
+      <div class="cbar-wrap">
+        <div class="ctrack"><div class="cfill" style="width:${bw}%;background:${col}"></div></div>
+      </div>
+      <div class="cpct-col">
+        <div class="cpct" style="color:${col}">${(+c.pct).toFixed(3)}%</div>
+        ${pctEmitidos}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderResumen() {
+  const d = DATA;
+  const vv = +d.votosValidos||0;
+  const ve = +d.votosEmitidos||0;
+  const vb = +d.votosBlancos||0;
+  const vn = +d.votosNulos||0;
+  const pctB = vv>0 ? ((vb/(vv+vb+vn))*100).toFixed(2)+"%" : "–";
+  const pctN = vv>0 ? ((vn/(vv+vb+vn))*100).toFixed(2)+"%" : "–";
+
+  const cards = [
+    {l:"Actas totales",    v: (+d.actasTotales||92766).toLocaleString("es-PE"), s:""},
+    {l:"Contabilizadas",   v: (+d.actasContabilizadas||0).toLocaleString("es-PE"), s:(+d.pctActas||0).toFixed(3)+"%"},
+    {l:"Pendientes",       v: (+d.actasPendientes||0).toLocaleString("es-PE"), s:"sin procesar"},
+    {l:"Enviadas al JEE",  v: (+d.actasJEE||0).toLocaleString("es-PE"), s:"observadas"},
+    {l:"Votos emitidos",   v: ve>0?ve.toLocaleString("es-PE"):"–", s:d.participacion>0?(+d.participacion).toFixed(2)+"% participación":""},
+    {l:"Votos válidos",    v: vv>0?vv.toLocaleString("es-PE"):"–", s:ve>0&&vv>0?((vv/ve)*100).toFixed(2)+"% s/emitidos":""},
+    {l:"Votos en blanco",  v: vb>0?vb.toLocaleString("es-PE"):"–", s:pctB},
+    {l:"Votos nulos",      v: vn>0?vn.toLocaleString("es-PE"):"–", s:pctN},
+  ];
+  document.getElementById("resumen").innerHTML = cards.map(c=>
+    `<div class="res-card">
+      <div class="res-label">${c.l}</div>
+      <div class="res-value">${c.v}</div>
+      ${c.s?`<div class="res-sub">${c.s}</div>`:""}
+    </div>`
+  ).join("");
+}
+
+function renderDonut() {
+  const cands = [...(DATA.candidatos||[])].sort((a,b)=>b.pct-a.pct).slice(0,8);
+  if (!cands.length) return;
+  const surf = getComputedStyle(document.body).getPropertyValue("--surface").trim()||"#fff";
+  if (donutChart) donutChart.destroy();
+  donutChart = new Chart(document.getElementById("donutC"),{
+    type:"doughnut",
+    data:{
+      labels: cands.map(c=>c.nombre),
+      datasets:[{data:cands.map(c=>+c.pct),backgroundColor:cands.map((_,i)=>COLORS[i]),borderWidth:2,borderColor:surf}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,cutout:"58%",
+      plugins:{
+        legend:{display:true,position:"right",labels:{boxWidth:11,font:{size:11},padding:9}},
+        tooltip:{callbacks:{label:i=>` ${i.label}: ${i.parsed.toFixed(3)}%`}}
+      }
+    }
+  });
+}
+
+function renderEvo() {
+  const isDark = matchMedia("(prefers-color-scheme:dark)").matches;
+  const gc=isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)";
+  const tc=isDark?"rgba(255,255,255,.4)":"rgba(0,0,0,.45)";
+  const ttb=isDark?"#2a2a2e":"#fff";
+  const ttd=isDark?"#444":"#ddd";
+
+  document.getElementById("evoLeg").innerHTML = EVO.top7.map(m=>
+    `<div class="leg">
+      <div class="ldot" style="background:${m.c}"></div>
+      <span class="leg-name">${m.n}</span>
+      <span style="color:var(--faint);font-size:10px">&nbsp;·&nbsp;${m.p}</span>
+    </div>`).join("");
+
+  document.getElementById("evoNota").innerHTML =
+    `Cómputo oficial ONPE. Los primeros puntos tienen sesgo urbano (Lima + exterior), que infló a López Aliaga. ` +
+    `Al 53.9% de actas: <strong>Fujimori 17.0% · López Aliaga 14.5% · Nieto 12.8%</strong>. ` +
+    `Cada actualización agrega automáticamente un nuevo punto al gráfico.`;
+
+  const dashes=[[],[],[6,3],[3,3],[8,4],[4,4],[2,3]];
+  if (evoChart) evoChart.destroy();
+  evoChart = new Chart(document.getElementById("evoC"),{
+    type:"line",
+    data:{
+      labels: EVO.labels,
+      datasets: EVO.top7.map((m,i)=>({
+        label:m.n, data:m.d,
+        borderColor:m.c, backgroundColor:m.c+"15",
+        borderWidth:2.5, borderDash:dashes[i]||[],
+        pointRadius:5,pointHoverRadius:7,
+        pointBackgroundColor:m.c,pointBorderColor:"#fff",pointBorderWidth:1.5,
+        tension:.3,fill:false
+      }))
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:"index",intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
+          titleColor:isDark?"#e0e0e0":"#111",
+          bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
+          titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
+          callbacks:{
+            title:i=>`Actas contabilizadas: ${i[0].label}`,
+            label:i=>` ${i.dataset.label}: ${i.parsed.y.toFixed(2)}%`
+          }
+        }
+      },
+      scales:{
+        x:{title:{display:true,text:"% actas contabilizadas (cómputo oficial ONPE)",font:{size:11},color:tc},
+           grid:{color:gc},ticks:{color:tc,font:{size:11},maxRotation:0}},
+        y:{title:{display:true,text:"% votos válidos",font:{size:11},color:tc},
+           grid:{color:gc},
+           ticks:{color:tc,font:{size:11},callback:v=>v+"%"},
+           min:0,suggestedMax:26}
+      }
+    }
+  });
+}
+
+function renderRegiones() {
+  const regs = DATA.regiones||[];
+  const grid = document.getElementById("regGrid");
+  const loading = document.getElementById("reg-loading");
+  loading.style.display = "none";
+
+  if (!regs.length) {
+    grid.innerHTML = `
+      <div style="grid-column:1/-1;padding:.75rem 0">
+        <div style="color:var(--muted);font-size:12px;margin-bottom:.5rem">
+          Los datos regionales no están disponibles en el corte actual de la ONPE.
+          Para activarlos, abre el sitio oficial y haz clic en un departamento del mapa
+          para identificar el endpoint correcto:
+        </div>
+        <a href="https://resultadoelectoral.onpe.gob.pe/main/presidenciales"
+           target="_blank"
+           style="font-size:12px;color:var(--blue);font-weight:600">
+          → Abrir ONPE oficial
+        </a>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = regs.map((r,i)=>
+    `<div class="rcard ${selReg===i?"sel":""}" onclick="toggleReg(${i})">
+      <div class="rname">${r.nombre}</div>
+      <div class="rlider">${r.lider}</div>
+      <div class="rpct">${(+r.pctLider).toFixed(1)}%</div>
+      <div class="ractas">${r.pctActas>0?`Actas: ${(+r.pctActas).toFixed(1)}%`:"–"}</div>
+    </div>`).join("");
+  renderRegDet();
+}
+
+function renderRegDet() {
+  const el = document.getElementById("regDet");
+  if (selReg===null || !DATA.regiones?.[selReg]) { el.classList.remove("show"); return; }
+  const r  = DATA.regiones[selReg];
+  const mx = r.candidatos?.[0]?.pct||100;
+  el.innerHTML = `
+    <div class="rdet-title">
+      ${r.nombre}
+      <span style="font-size:12px;font-weight:400;color:var(--muted)">
+        — ~${(+r.pctActas).toFixed(1)}% de actas contabilizadas
+      </span>
+    </div>
+    <div class="clist">${(r.candidatos||[]).map((c,i)=>`
+      <div class="crow rdet">
+        <div class="rank-badge" style="background:${COLORS[i]||COLORS.at(-1)};width:22px;height:22px;font-size:10px">${i+1}</div>
+        <div class="cinfo"><div class="cname" style="font-size:12px">${c.nombre}</div><div class="cparty">${c.partido}</div></div>
+        <div class="cbar-wrap">
+          <div class="ctrack"><div class="cfill" style="width:${(c.pct/mx*100).toFixed(1)}%;background:${COLORS[i]||COLORS.at(-1)}"></div></div>
+        </div>
+        <div class="cpct-col">
+          <div class="cpct" style="color:${COLORS[i]||COLORS.at(-1)};font-size:14px">${(+c.pct).toFixed(2)}%</div>
+        </div>
+      </div>`).join("")}
+    </div>`;
+  el.classList.add("show");
+}
+
+// ── Helpers ────────────────────────────────────────────────────
+function setPill(f) {
+  const el = document.getElementById("sourcePill");
+  if (f==="api_onpe")        { el.className="pill pill-live";     el.textContent="🟢 ONPE en vivo"; }
+  else if(f==="api_onpe_parcial"){ el.className="pill pill-partial"; el.textContent="🟡 ONPE parcial"; }
+  else                        { el.className="pill pill-fallback"; el.textContent="🔴 datos locales"; }
+}
+function setAlert(type, html) {
+  const el = document.getElementById("alertBox");
+  if (!type) { el.innerHTML=""; return; }
+  el.innerHTML = `<div class="alert ${type}">${html}</div>`;
+}
+window.showSec = (id,btn) => {
+  document.querySelectorAll(".sec").forEach(s=>s.classList.remove("active"));
+  document.querySelectorAll(".tabs .tab").forEach(b=>b.classList.remove("active"));
+  document.getElementById("sec-"+id).classList.add("active");
+  btn.classList.add("active");
+  if (id==="evolucion") renderEvo();
+  if (id==="regiones")  renderRegiones();
+};
+window.toggleReg = i => {
+  selReg = selReg===i ? null : i;
+  renderRegiones();
+};
+
+// ── Init ────────────────────────────────────────────────────────
+setAlert("info","⏳ Conectando al proxy… <code>python3 onpe_proxy.py</code> → <strong>↻ Actualizar</strong>");
+setTimeout(()=>silentPoll(), 600);
+setInterval(()=>silentPoll(), 60000);
+</script>
+</body>
+</html>
