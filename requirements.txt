@@ -1,9 +1,0 @@
-http
-json
-threading
-time
-urllib
-gzip
-os
-sys
-datetime
