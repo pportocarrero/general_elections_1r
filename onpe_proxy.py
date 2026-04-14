@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v15 (Omni-Parámetros + Catálogo Dinámico Robusto)
+ONPE 2026 — Proxy Local v16 (Diccionario Fijo + Anti-Fuga + Asíncrono)
 Uso:  python3 onpe_proxy.py
 """
 
@@ -19,12 +19,24 @@ BASE        = "https://resultadoelectoral.onpe.gob.pe/presentacion-backend"
 EP_MESAS     = BASE + "/mesa/totales?tipoFiltro=eleccion"
 EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccion"
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
-EP_DEPTOS    = BASE + "/ubigeos/departamentos?idEleccion=10&idAmbitoGeografico=1"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# Endpoints Regionales (Omni-Parámetros para evitar el bug de ONPE)
-EP_REG_PART  = BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={0}&idUbigeoDepartamento={0}&ubigeoNivel01={0}"
-EP_REG_TOT   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={0}&idUbigeoDepartamento={0}&ubigeoNivel01={0}"
+# Endpoints Regionales Exactos (Basados en tu debug.txt de Arequipa)
+EP_REG_PART  = BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={}"
+EP_REG_TOT   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&idUbigeoDepartamento={}"
+
+# DICCIONARIO FIJO: Esto evita que el sistema dependa de catálogos inestables de la ONPE.
+UBIGEOS = {
+    "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
+    "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
+    "070000": "Callao", "080000": "Cusco", "090000": "Huancavelica",
+    "100000": "Huánuco", "110000": "Ica", "120000": "Junín",
+    "130000": "La Libertad", "140000": "Lambayeque", "150000": "Lima",
+    "160000": "Loreto", "170000": "Madre de Dios", "180000": "Moquegua",
+    "190000": "Pasco", "200000": "Piura", "210000": "Puno",
+    "220000": "San Martín", "230000": "Tacna", "240000": "Tumbes",
+    "250000": "Ucayali"
+}
 
 HEADERS = {
     "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -53,7 +65,7 @@ _lock  = threading.Lock()
 _is_refreshing = False
 
 def _get_json(url, retries=1):
-    """Inyecta un timestamp para asegurar datos en tiempo real evadiendo el caché de la CDN"""
+    """Inyecta un timestamp para evitar la memoria caché de la CDN de ONPE."""
     sep = "&" if "?" in url else "?"
     cb_url = f"{url}{sep}_={int(time.time()*1000)}"
     
@@ -90,7 +102,7 @@ def parse_avance(raw_totales):
     jee  = int(d.get("enviadasJee") or 0)
     pend = int(d.get("pendientesJee") or max(0, tot - cont - jee))
 
-    # Cálculo seguro de respaldo
+    # Cálculo seguro si la API omite el porcentaje
     if pct == 0 and tot > 0:
         pct = (cont / tot) * 100.0
 
@@ -145,8 +157,7 @@ def _fmt_nombre(nombre_mayus):
     return nombre_mayus.title()
 
 def fetch_region_worker(ubigeo, nombre):
-    """Extrae datos regionales usando URLs con parámetros múltiples para evadir bugs de ONPE"""
-    # Usamos {0} en format para repetir el ubigeo en todas las variables
+    """Extrae datos de la región y valida que no sea una fuga de datos nacionales."""
     raw_part = _get_json(EP_REG_PART.format(ubigeo))
     raw_tot  = _get_json(EP_REG_TOT.format(ubigeo))
     
@@ -154,6 +165,11 @@ def fetch_region_worker(ubigeo, nombre):
     avance = parse_avance(raw_tot)
 
     if not cands: return None
+
+    # VALIDACIÓN ANTI-FUGA: Si una región pequeña reporta >2M votos, la ONPE se equivocó.
+    total_votos = sum(c["votos"] for c in cands)
+    if total_votos > 2000000 and ubigeo != "150000":  # 150000 es Lima
+        return None
 
     return {
         "nombre": nombre.title(),
@@ -187,34 +203,30 @@ def fetch_onpe():
             ok_count += 1
             print(f"  ✓ Participantes   → {len(cands)}")
 
-    # 3) Obtener Catálogo de Ubigeos Dinámico
-    raw_deptos = _get_json(EP_DEPTOS)
-    if raw_deptos:
-        deptos_list = _unwrap(raw_deptos)
-        ubigeos_dinamicos = {}
+    # 3) Regiones (Diccionario Fijo y Seguro)
+    print(f"  ✓ Procesando {len(UBIGEOS)} regiones (Hardcoded)...")
+    regiones = []
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_region = {executor.submit(fetch_region_worker, u, n): n for u, n in UBIGEOS.items()}
+        for future in concurrent.futures.as_completed(future_to_region):
+            res = future.result()
+            if res:
+                regiones.append(res)
+    
+    if regiones:
+        regiones.sort(key=lambda x: x["nombre"])
         
-        if isinstance(deptos_list, list):
-            for d in deptos_list:
-                # Búsqueda robusta de llaves
-                ubg = d.get("cdgoDep") or d.get("idUbigeo") or d.get("codigoUbigeo")
-                nom = d.get("descDep") or d.get("nombre") or d.get("nombreUbigeo")
-                if ubg and nom:
-                    ubigeos_dinamicos[ubg] = nom
-        
-        if ubigeos_dinamicos:
-            print(f"  ✓ Catálogo Dinámico → {len(ubigeos_dinamicos)} regiones encontradas.")
+        # Mantenemos las regiones previas en caché si la ONPE bloquea temporalmente alguna
+        with _lock:
+            old_regs = _cache.get("regiones", []) if _cache else []
             
-            regiones = []
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                future_to_region = {executor.submit(fetch_region_worker, u, n): n for u, n in ubigeos_dinamicos.items()}
-                for future in concurrent.futures.as_completed(future_to_region):
-                    res = future.result()
-                    if res:
-                        regiones.append(res)
+        final_regs_dict = {r["nombre"]: r for r in old_regs}
+        for r in regiones:
+            final_regs_dict[r["nombre"]] = r 
             
-            if regiones:
-                regiones.sort(key=lambda x: x["nombre"])
-                result["regiones"] = regiones
+        result["regiones"] = sorted(final_regs_dict.values(), key=lambda x: x["nombre"])
+        print(f"  ✓ Regiones listas → {len(result['regiones'])}")
 
     result["fuente"] = ("api_onpe" if ok_count >= 2 else "api_onpe_parcial" if ok_count == 1 else "respaldo_local")
     result["timestamp"] = datetime.now(timezone.utc).isoformat()
@@ -256,6 +268,7 @@ def refresh_loop():
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
+        # Oculta los pings de actualización para no ensuciar tu consola de Render
         if args and not any(x in str(args[0]) for x in ["/api/datos", "/api/status"]):
             print(f"  GET {args[0]}")
             
@@ -311,7 +324,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  ONPE 2026 — Proxy Local v15 (Omni-Parámetros)")
+    print("  ONPE 2026 — Proxy Local v16 (Anti-Fuga + Diccionario Fijo)")
     print("=" * 60)
     _load_cache()
     threading.Thread(target=_do_refresh, daemon=True).start()
