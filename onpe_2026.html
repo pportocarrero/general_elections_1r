@@ -5,190 +5,180 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ONPE 2026 — Resultados Presidenciales</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
 :root{
-  --bg:#f5f4f0;--surface:#fff;--surface2:#f0efe9;
-  --border:rgba(0,0,0,.09);--border2:rgba(0,0,0,.18);
+  --bg:#f5f4f0;--surface:#fff;--s2:#f0efe9;--s3:#e8e7e0;
+  --bd:rgba(0,0,0,.09);--bd2:rgba(0,0,0,.16);
   --text:#1a1a18;--muted:#6b6b65;--faint:#9b9b93;
-  --blue:#185FA5;--red:#A32D2D;--green:#3B6D11;
-  --amber:#854F0B;--purple:#534AB7;--teal:#0F6E56;
+  --blue:#185FA5;--red:#A32D2D;--green:#3B6D11;--amber:#854F0B;
+  --purple:#534AB7;--teal:#0F6E56;
   --r:10px;--sh:0 1px 4px rgba(0,0,0,.08);
 }
 @media(prefers-color-scheme:dark){:root{
-  --bg:#18181a;--surface:#232327;--surface2:#2c2c31;
-  --border:rgba(255,255,255,.09);--border2:rgba(255,255,255,.20);
-  --text:#e8e8e2;--muted:#a0a09a;--faint:#58585a;
+  --bg:#18181a;--surface:#232327;--s2:#2c2c31;--s3:#363639;
+  --bd:rgba(255,255,255,.08);--bd2:rgba(255,255,255,.18);
+  --text:#e8e8e2;--muted:#a0a09a;--faint:#585858;
 }}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+     background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
 code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px 6px;border-radius:4px}
-.app{max-width:1180px;margin:0 auto;padding:1.5rem 1rem 4rem}
+.app{max-width:1200px;margin:0 auto;padding:1.5rem 1rem 4rem}
 
+/* Topbar */
 .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap;gap:10px}
 .logo h1{font-size:18px;font-weight:700;letter-spacing:-.3px}
 .logo p{font-size:11px;color:var(--muted);margin-top:2px}
 .topright{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 #lastUpdate{font-size:11px;color:var(--faint)}
-.pill{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;border:1px solid;letter-spacing:.04em;text-transform:uppercase}
-.pill-live    {background:#e8f5ec;color:#1a4a28;border-color:#6ee7b0}
-.pill-partial {background:#fef3e2;color:#6b3d00;border-color:#f59e0b}
-.pill-fallback{background:#fdecea;color:#6b1a1a;border-color:#f87171}
+.pill{font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;border:1px solid;
+      letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.p-live    {background:#e8f5ec;color:#1a4a28;border-color:#6ee7b0}
+.p-partial {background:#fef3e2;color:#6b3d00;border-color:#f59e0b}
+.p-fallback{background:#fdecea;color:#6b1a1a;border-color:#f87171}
 @media(prefers-color-scheme:dark){
-  .pill-live    {background:#0d2e18;color:#6ee7b7;border-color:#1a4a28}
-  .pill-partial {background:#2d1f00;color:#fbbf24;border-color:#4d3300}
-  .pill-fallback{background:#2d0e0e;color:#fca5a5;border-color:#5a1a1a}
+  .p-live    {background:#0d2e18;color:#6ee7b7;border-color:#1a4a28}
+  .p-partial {background:#2d1f00;color:#fbbf24;border-color:#4d3300}
+  .p-fallback{background:#2d0e0e;color:#fca5a5;border-color:#5a1a1a}
 }
-.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r);border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:12px;font-weight:500;cursor:pointer;transition:background .15s}
-.btn:hover{background:var(--surface2)}
-.btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
-.btn.primary:hover{opacity:.88}
-.btn:disabled{opacity:.45;cursor:not-allowed}
-.spin{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r);
+     border:1px solid var(--bd2);background:var(--surface);color:var(--text);
+     font-size:12px;font-weight:500;cursor:pointer;transition:background .15s}
+.btn:hover{background:var(--s2)}.btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn.primary:hover{opacity:.88}.btn:disabled{opacity:.45;cursor:not-allowed}
+.spin{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);
+      border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite}
 @keyframes rot{to{transform:rotate(360deg)}}
 
-.alert{padding:9px 14px;border-radius:var(--r);font-size:12px;margin-bottom:.85rem;line-height:1.7}
-.alert.info{background:#e8f0fb;color:#1a3a6a;border:1px solid #b5d0f2}
-.alert.warn{background:#fef3e2;color:#6b4100;border:1px solid #f7d99c}
-.alert.ok  {background:#e8f5ec;color:#1a4a28;border:1px solid #9dd6b0}
+/* Alert */
+.alert{padding:9px 14px;border-radius:var(--r);font-size:12px;margin-bottom:.85rem;line-height:1.7;border:1px solid}
+.a-info{background:#e8f0fb;color:#1a3a6a;border-color:#b5d0f2}
+.a-warn{background:#fef3e2;color:#6b4100;border-color:#f7d99c}
+.a-ok  {background:#e8f5ec;color:#1a4a28;border-color:#9dd6b0}
 @media(prefers-color-scheme:dark){
-  .alert.info{background:#0d2240;color:#93c5fd;border-color:#1e3a5f}
-  .alert.warn{background:#2d1f00;color:#fbbf24;border-color:#4d3300}
-  .alert.ok  {background:#0d2e18;color:#6ee7b7;border-color:#1a4a28}
+  .a-info{background:#0d2240;color:#93c5fd;border-color:#1e3a5f}
+  .a-warn{background:#2d1f00;color:#fbbf24;border-color:#4d3300}
+  .a-ok  {background:#0d2e18;color:#6ee7b7;border-color:#1a4a28}
 }
 #alertBox{margin-bottom:.5rem}
 
-.statbar{display:flex;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:1.2rem;box-shadow:var(--sh)}
-.stat{flex:1;min-width:130px;padding:12px 18px;border-right:1px solid var(--border)}
+/* Stat bar */
+.statbar{display:flex;flex-wrap:wrap;background:var(--surface);border:1px solid var(--bd);
+         border-radius:var(--r);overflow:hidden;margin-bottom:1.2rem;box-shadow:var(--sh)}
+.stat{flex:1;min-width:120px;padding:12px 16px;border-right:1px solid var(--bd)}
 .stat:last-child{border-right:none}
 .slbl{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
-.sval{font-size:22px;font-weight:700;line-height:1.1}
+.sval{font-size:20px;font-weight:700;line-height:1.1}
 .ssub{font-size:11px;color:var(--muted);margin-top:2px}
 
+/* Progress */
 .prog-wrap{margin-bottom:1.2rem}
 .prog-head{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px}
-.prog-track{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+.prog-track{height:8px;background:var(--s2);border-radius:4px;overflow:hidden;border:1px solid var(--bd)}
 .prog-fill{height:100%;background:var(--blue);border-radius:4px;transition:width .6s ease}
 
+/* Tabs */
 .tabs{display:flex;gap:4px;margin-bottom:1.1rem;flex-wrap:wrap}
-.tab{font-size:12px;font-weight:500;padding:6px 14px;border-radius:var(--r);border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
+.tab{font-size:12px;font-weight:500;padding:6px 14px;border-radius:var(--r);
+     border:1px solid var(--bd2);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s}
 .tab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 .sec{display:none}.sec.active{display:block}
 
-.two-col{display:grid;grid-template-columns:1.4fr 1fr;gap:1rem;margin-bottom:1rem}
-@media(max-width:720px){.two-col{grid-template-columns:1fr}}
-.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.1rem 1.25rem;box-shadow:var(--sh)}
-.ptitle{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.85rem;display:flex;align-items:center;gap:6px}
+/* Panels */
+.two-col{display:grid;grid-template-columns:1.35fr 1fr;gap:1rem;margin-bottom:1rem}
+@media(max-width:740px){.two-col{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--bd);border-radius:var(--r);
+       padding:1.1rem 1.25rem;box-shadow:var(--sh)}
+.ptitle{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
+        letter-spacing:.05em;margin-bottom:.85rem}
 .full{grid-column:1/-1}
 
+/* Candidate rows */
 .clist{display:flex;flex-direction:column;gap:4px}
-.crow{
-  display:grid;
-  grid-template-columns:28px 220px 1fr 80px;
-  align-items:center;gap:10px;
-  padding:9px 12px;border-radius:8px;
-  border:1px solid var(--border);
-  transition:border-color .15s,background .15s;
-}
-.crow:hover{background:var(--surface2)}
+.crow{display:grid;grid-template-columns:26px 1fr 170px 70px;align-items:center;gap:10px;
+      padding:9px 12px;border-radius:8px;border:1px solid var(--bd);transition:border-color .15s,background .15s}
+.crow:hover{background:var(--s2)}
 .crow.r1{border-color:var(--blue);background:rgba(24,95,165,.04)}
 .crow.r2{border-color:var(--red);background:rgba(163,45,45,.04)}
 .crow.r3{border-color:var(--green);background:rgba(59,109,17,.04)}
 @media(prefers-color-scheme:dark){
-  .crow.r1{background:rgba(24,95,165,.08)}
-  .crow.r2{background:rgba(163,45,45,.08)}
-  .crow.r3{background:rgba(59,109,17,.08)}
+  .crow.r1{background:rgba(24,95,165,.10)}.crow.r2{background:rgba(163,45,45,.10)}.crow.r3{background:rgba(59,109,17,.10)}
 }
-.rank-badge{
-  width:24px;height:24px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:700;color:#fff;flex-shrink:0;
-}
-.cinfo .cname{font-size:13px;font-weight:600}
-.cinfo .cparty{font-size:11px;color:var(--muted);margin-top:1px}
-.cinfo .cvotos{font-size:10px;color:var(--faint);margin-top:2px}
+.rbadge{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;
+        justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.cname{font-size:13px;font-weight:600}
+.cparty{font-size:11px;color:var(--muted);margin-top:1px}
+.cvotos{font-size:10px;color:var(--faint);margin-top:2px}
 .cbar-wrap{display:flex;flex-direction:column;gap:4px}
-.ctrack{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.ctrack{height:7px;background:var(--s2);border-radius:4px;overflow:hidden}
 .cfill{height:100%;border-radius:4px;transition:width .6s}
 .cpct-col{text-align:right}
 .cpct{font-size:17px;font-weight:700;line-height:1}
-.cpct-emitidos{font-size:10px;color:var(--faint);margin-top:2px}
+.cpct-sub{font-size:10px;color:var(--faint);margin-top:2px}
 
-.resumen-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.res-card{background:var(--surface2);border-radius:8px;padding:10px 12px}
-.res-label{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
-.res-value{font-size:18px;font-weight:700}
+/* Resumen cards */
+.res-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.res-card{background:var(--s2);border-radius:8px;padding:10px 12px}
+.res-lbl{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.res-val{font-size:18px;font-weight:700}
 .res-sub{font-size:11px;color:var(--muted);margin-top:1px}
 
-.legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:.75rem}
-.leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);cursor:pointer}
-.leg:hover .leg-name{color:var(--text)}
+/* Evolución */
+.evo-legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:.75rem}
+.leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
 .ldot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.leg-name{font-weight:500}
-.chart-box{position:relative;width:100%}
-.evo-nota{font-size:11px;color:var(--muted);margin-top:.65rem;padding:8px 12px;background:var(--surface2);border-radius:var(--r);line-height:1.6}
+.evo-nota{font-size:11px;color:var(--muted);margin-top:.65rem;padding:8px 12px;
+          background:var(--s2);border-radius:var(--r);line-height:1.6}
 
-.rdet{margin-top:0;padding:1rem 1.1rem;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);box-shadow:var(--sh)}
-.rdet-title{font-size:14px;font-weight:700;margin-bottom:.75rem;color:var(--text)}
-.rdet .crow{grid-template-columns:24px 180px 1fr 70px}
+/* Regiones */
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:7px;margin-bottom:.85rem}
+.rcard{padding:10px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--surface);
+       cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.rcard:hover{border-color:var(--bd2);box-shadow:var(--sh)}
+.rcard.sel{border-color:var(--blue);box-shadow:0 0 0 2px rgba(24,95,165,.12)}
+.rname{font-size:12px;font-weight:700;margin-bottom:2px}
+.rlider{font-size:11px;color:var(--blue);font-weight:500}
+.rpct{font-size:21px;font-weight:700;margin-top:1px}
+.ractas{font-size:10px;color:var(--faint);margin-top:2px}
+.rdet{display:none;padding:1rem 1.1rem;border:1px solid var(--bd);border-radius:var(--r);
+      background:var(--surface);box-shadow:var(--sh)}
+.rdet.show{display:block}
+.rdet-title{font-size:14px;font-weight:700;margin-bottom:.75rem}
+.rdet .crow{grid-template-columns:24px 1fr 140px 60px}
 
-/* Map specific styling */
-.map-tooltip {
-  position: absolute;
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  padding: 8px 12px;
-  border-radius: 8px;
-  pointer-events: none;
-  opacity: 0;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  font-size: 12px;
-  transition: opacity 0.15s;
-  z-index: 1000;
-  color: var(--text);
-}
-.map-tooltip .title { font-weight: 700; margin-bottom: 4px; font-size: 13px; }
-.map-tooltip .lider { font-weight: 600; display: flex; align-items: center; gap: 5px; margin-bottom: 2px;}
-
-.map-legend-container {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px dashed var(--border);
-}
-
-/* Heatmap Table Styling */
-.hm-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; padding: 10px; background: var(--surface2); border-radius: var(--r); align-items: center;}
-.hm-filters-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-right: 5px;}
-.hm-filters label { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; cursor: pointer; user-select: none;}
-.heatmap-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.heatmap-table th, .heatmap-table td { border: 1px solid var(--border); padding: 8px 6px; text-align: center; }
-.heatmap-table th { background: var(--surface2); color: var(--text); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
-.heatmap-table .cand-name { text-align: left; font-weight: 600; color: var(--text); white-space: nowrap; }
-.hm-cell { font-weight: 700; color: #111 !important; transition: filter 0.2s; cursor: default; }
-.hm-cell:hover { filter: brightness(0.9); }
-
-/* Footer Styling */
-.app-footer {
-  text-align: center;
-  margin-top: 3rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.6;
-}
-.app-footer a {
-  color: var(--blue);
-  text-decoration: none;
-  font-weight: 600;
-}
-.app-footer a:hover {
-  text-decoration: underline;
-}
+/* ── PROYECCIÓN ── */
+.proj-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:1rem;
+              padding:.75rem 1rem;background:var(--s2);border-radius:var(--r)}
+.proj-toolbar label{font-size:12px;color:var(--muted);font-weight:500}
+.cand-toggle-group{display:flex;flex-wrap:wrap;gap:6px}
+.ctog{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:500;
+      padding:4px 10px;border-radius:20px;border:1.5px solid;cursor:pointer;
+      transition:opacity .15s,background .15s;user-select:none}
+.ctog.off{opacity:.35}
+.proj-table-wrap{overflow-x:auto;margin-bottom:1rem}
+.proj-table{width:100%;border-collapse:collapse;font-size:12px}
+.proj-table th{font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;
+               letter-spacing:.04em;padding:6px 10px;border-bottom:1px solid var(--bd);
+               text-align:left;white-space:nowrap;background:var(--s2)}
+.proj-table td{padding:7px 10px;border-bottom:1px solid var(--bd);vertical-align:middle}
+.proj-table tr:last-child td{border-bottom:none}
+.proj-table tr:hover td{background:var(--s2)}
+.proj-table .reg-col{font-weight:600;font-size:12px}
+.proj-table .num{text-align:right;font-variant-numeric:tabular-nums}
+.proj-table .pct-badge{display:inline-block;font-size:10px;font-weight:600;
+                       padding:1px 6px;border-radius:10px;margin-left:4px}
+.proj-national{background:var(--s2);border-radius:var(--r);padding:1rem 1.25rem;
+               border:1px solid var(--bd)}
+.proj-nat-title{font-size:13px;font-weight:700;margin-bottom:.85rem;
+                display:flex;align-items:center;gap:8px}
+.proj-nat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.proj-nat-card{background:var(--surface);border-radius:8px;padding:10px 12px;
+               border:1px solid var(--bd)}
+.proj-nat-name{font-size:12px;font-weight:600;margin-bottom:4px}
+.proj-nat-party{font-size:10px;color:var(--muted);margin-bottom:6px}
+.proj-nat-row{display:flex;justify-content:space-between;font-size:11px;
+              padding-top:4px;border-top:1px solid var(--bd)}
+.proj-nat-label{color:var(--muted)}.proj-nat-val{font-weight:600}
 </style>
 </head>
 <body>
@@ -200,11 +190,10 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     <p>Elecciones Generales · Primera Vuelta · 12 de abril 2026 · Cómputo oficial</p>
   </div>
   <div class="topright">
-    <span id="sourcePill" class="pill pill-fallback">sin datos</span>
+    <span id="sourcePill" class="pill p-fallback">sin datos</span>
     <span id="lastUpdate"></span>
     <button class="btn primary" id="refreshBtn" onclick="doRefresh()">
-      <span class="spin" id="spin"></span>
-      <span id="btnTxt">↻ Actualizar</span>
+      <span class="spin" id="spin"></span><span id="btnTxt">↻ Actualizar</span>
     </button>
   </div>
 </div>
@@ -251,771 +240,482 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
   <button class="tab active" onclick="showSec('nacional',this)">Nacional</button>
   <button class="tab"        onclick="showSec('evolucion',this)">Evolución</button>
   <button class="tab"        onclick="showSec('regiones',this)">Regiones</button>
+  <button class="tab"        onclick="showSec('proyeccion',this)">Proyección</button>
 </div>
 
+<!-- ══ NACIONAL ══ -->
 <div id="sec-nacional" class="sec active">
-  <div class="two-col">
-    <div class="panel full">
-      <div class="ptitle">Candidatos — % de votos válidos (> 1%)</div>
-      <div class="clist" id="candList">
-        <div style="color:var(--faint);padding:1rem 0">Cargando…</div>
-      </div>
-    </div>
+  <div class="panel full" style="margin-bottom:1rem">
+    <div class="ptitle">Candidatos — % votos válidos (cómputo oficial ONPE)</div>
+    <div class="clist" id="candList"><div style="color:var(--faint);padding:1rem 0">Cargando…</div></div>
   </div>
   <div class="two-col">
     <div class="panel">
       <div class="ptitle">Distribución — votos válidos</div>
-      <div class="chart-box" style="height:280px">
-        <canvas id="donutC" role="img"></canvas>
+      <div style="position:relative;height:270px">
+        <canvas id="donutC" role="img" aria-label="Distribución de votos por candidato"></canvas>
       </div>
     </div>
     <div class="panel">
       <div class="ptitle">Resumen del cómputo</div>
-      <div class="resumen-grid" id="resumen"></div>
+      <div class="res-grid" id="resumen"></div>
     </div>
   </div>
 </div>
 
+<!-- ══ EVOLUCIÓN ══ -->
 <div id="sec-evolucion" class="sec">
-  
-  <div class="panel full" style="margin-bottom:1rem">
-    <div class="ptitle">Evolución top 6 candidatos — % votos válidos por avance de actas</div>
-    <div class="legend" id="evoLeg"></div>
-    <div class="chart-box" style="height:350px">
-      <canvas id="evoC" role="img"></canvas>
-    </div>
-  </div>
-
-  <div class="panel full" style="margin-bottom:1rem">
-    <div class="ptitle">Evolución top 6 candidatos — Votos Emitidos (Barras dinámicas)</div>
-    <div class="chart-box" style="height:350px">
-      <canvas id="evoVotesC" role="img"></canvas>
+  <div class="panel full">
+    <div class="ptitle">Evolución top 7 candidatos — % votos válidos por actas contabilizadas</div>
+    <div class="evo-legend" id="evoLeg"></div>
+    <div style="position:relative;height:390px">
+      <canvas id="evoC" role="img" aria-label="Evolución de porcentajes candidatos"></canvas>
     </div>
     <div class="evo-nota" id="evoNota"></div>
   </div>
-
-  <div class="panel full">
-    <div class="ptitle">Mapa de Calor — Crecimiento Logarítmico de Votos por Corte</div>
-    
-    <div id="hmFiltersContainer"></div>
-
-    <div style="overflow-x:auto">
-      <div id="heatmapContainer"></div>
-    </div>
-    <div class="evo-nota">
-      Calculado usando la fórmula de <strong>retorno logarítmico (ln(V<sub>t</sub> / V<sub>t-1</sub>))</strong> para evaluar el momentum analítico del conteo de votos. Celeste = menor tasa de crecimiento relativo, Rojo = mayor tasa de crecimiento en la columna respectiva, <strong>solo entre los candidatos seleccionados</strong>.
-    </div>
-  </div>
-
 </div>
 
+<!-- ══ REGIONES ══ -->
 <div id="sec-regiones" class="sec">
-  <div id="reg-loading" style="color:var(--faint);font-size:12px;padding-bottom:1rem;display:none">
-      Cargando datos regionales…
-  </div>
-  
-  <div class="two-col" style="grid-template-columns: 1fr 1.3fr">
-    <div class="panel">
-      <div class="ptitle">Mapa del Perú — Líder por Región</div>
-      <div id="mapContainer" style="width: 100%; height: 460px; display:flex; justify-content:center; align-items:center;">
-          <div style="color:var(--muted);font-size:12px">Generando mapa interactivo...</div>
-      </div>
-      <div id="mapLegend" class="map-legend-container" style="display:none;"></div>
-    </div>
-    
-    <div class="panel">
-      <div class="ptitle">Detalle Regional</div>
-      <div class="rdet" id="regDet" style="border:none; box-shadow:none; padding:0">
-         <div style="text-align:center; padding:3rem 1rem; color:var(--faint)">
-            <p style="font-size:32px; margin-bottom:10px">🗺️</p>
-            Haz clic en un departamento del mapa<br>para ver los resultados oficiales detallados.
-         </div>
-      </div>
-    </div>
+  <div class="panel full">
+    <div class="ptitle">Resultados por región — clic para ver detalle</div>
+    <div class="rgrid" id="regGrid"></div>
+    <div class="rdet" id="regDet"></div>
   </div>
 </div>
 
-<div id="mapTooltip" class="map-tooltip"></div>
+<!-- ══ PROYECCIÓN ══ -->
+<div id="sec-proyeccion" class="sec">
+  <div class="panel full" style="margin-bottom:1rem">
+    <div class="ptitle">Proyección regional basada en tendencia actual</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
+      Muestra, para cada región: votos contabilizados, votos faltantes (estimados),
+      y proyección de cuántos votos obtendría cada candidato si la tendencia actual se mantiene
+      al 100% de actas. Selecciona o deselecciona candidatos con los botones.
+    </p>
 
-<div class="app-footer">
-  Creado por Pedro Portocarrero con fines académicos e informativos.<br>
-  Si quieres contactarme, puedes visitar mi <a href="https://www.linkedin.com/in/pportocarrero/" target="_blank" rel="noopener noreferrer">LinkedIn</a>.
+    <div class="proj-toolbar">
+      <span class="proj-toolbar label">Mostrar candidatos:</span>
+      <div class="cand-toggle-group" id="candToggles"></div>
+    </div>
+
+    <div class="proj-table-wrap">
+      <table class="proj-table" id="projTable">
+        <thead id="projHead"></thead>
+        <tbody id="projBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="proj-national" id="projNational">
+    <div class="proj-nat-title">
+      🇵🇪 Proyección nacional — suma de todas las regiones disponibles
+      <span style="font-size:11px;color:var(--faint);font-weight:400" id="projNatCoverage"></span>
+    </div>
+    <div class="proj-nat-grid" id="projNatGrid"></div>
+  </div>
 </div>
 
 </div>
 <script>
-const PROXY  = "";
+const API   = (()=>{
+  // Si estamos en Render, usar URL relativa; si es local, usar localhost
+  const h = location.hostname;
+  return (h==="localhost"||h==="127.0.0.1") ? "http://localhost:8765" : "";
+})();
+
 const COLORS = [
-  "#185FA5","#A32D2D","#3B6D11","#854F0B","#534AB7",
-  "#0F6E56","#8B6900","#5a2d82","#555","#333"
+  "#A32D2D","#185FA5","#3B6D11","#534AB7","#854F0B",
+  "#0F6E56","#8B6900","#5a2d82","#555","#333",
+  "#0d47a1","#880e4f","#1b5e20","#bf360c","#311b92",
 ];
 
 const EVO = {
-  labels: ["0.008%","10.400%","21.700%","39.400%","42.800%","53.886%"],
-  top7: [
-    {n:"Fujimori",     p:"Fuerza Popular",          c:"#A32D2D", 
-     d:[10.7, 16.7, 16.9, 17.0, 17.1, 16.961],
-     v:[150, 200000, 450000, 1000000, 1250000, 1670250]},
-    {n:"López Aliaga", p:"Renovación Popular",       c:"#185FA5", 
-     d:[22.7, 22.0, 21.1, 20.8, 20.5, 14.499],
-     v:[300, 250000, 500000, 1050000, 1300000, 1427769]},
-    {n:"Nieto",        p:"Buen Gobierno",            c:"#3B6D11", 
-     d:[17.7, 16.1, 16.1, 15.7, 15.6, 12.786],
-     v:[200, 180000, 400000, 850000, 1000000, 1259068]},
-    {n:"Belmont",      p:"Cívico Obras",             c:"#534AB7", 
-     d:[ 0.0,  8.3,  8.5,  8.6,  8.6,  9.857],
-     v:[  0,  80000, 200000, 550000, 750000, 970658]},
-    {n:"Álvarez",      p:"País para Todos",          c:"#854F0B", 
-     d:[11.0,  8.8,  8.9,  8.9,  9.0,  8.446],
-     v:[100,  90000, 220000, 600000, 800000, 831675]},
-    {n:"Sánchez",      p:"Juntos por el Perú",       c:"#0F6E56", 
-     d:[ 5.0,  5.5,  6.0,  6.5,  6.8,  8.013],
-     v:[ 50,  60000, 150000, 450000, 600000, 789058]},
-    {n:"López Chau",   p:"Ahora Nación",             c:"#8B6900", 
-     d:[ 7.0,  6.8,  6.5,  6.5,  6.8,  7.621],
-     v:[ 80,  70000, 160000, 420000, 580000, 750464]},
+  labels:["0.008%","10.4%","21.7%","30.0%","39.4%","42.8%","53.9%"],
+  top7:[
+    {n:"Fujimori",    p:"Fuerza Popular",          c:"#A32D2D",d:[10.7,16.7,16.9,17.0,17.0,17.1,17.0]},
+    {n:"López Aliaga",p:"Renovación Popular",       c:"#185FA5",d:[22.7,22.0,21.1,18.0,20.8,20.5,14.5]},
+    {n:"Nieto",       p:"Buen Gobierno",            c:"#3B6D11",d:[17.7,16.1,16.1,14.0,15.7,15.6,12.8]},
+    {n:"Belmont",     p:"Cívico Obras",             c:"#534AB7",d:[ 0.0, 8.3, 8.5, 9.0, 8.6, 8.6, 9.9]},
+    {n:"Álvarez",     p:"País para Todos",          c:"#854F0B",d:[11.0, 8.8, 8.9, 8.0, 8.9, 9.0, 8.4]},
+    {n:"Sánchez",     p:"Juntos por el Perú",       c:"#0F6E56",d:[ 5.0, 5.5, 6.0, 7.0, 6.5, 6.8, 8.0]},
+    {n:"López Chau",  p:"Ahora Nación",             c:"#8B6900",d:[ 7.0, 6.8, 6.5, 6.0, 6.5, 6.8, 7.6]},
   ]
 };
 
-let DATA = null, selReg = null;
-let donutChart = null, evoChart = null, evoVotesChart = null;
-let geoJsonData = null; 
+let DATA=null, selReg=null, donutChart=null, evoChart=null;
+let projActive = new Set();   // índices de candidatos activos en proyección
 
-let hmSelectedCands = null;
-
-async function doRefresh() {
+// ── FETCH ──────────────────────────────────────────────────
+async function doRefresh(){
   const btn=document.getElementById("refreshBtn");
-  const sp =document.getElementById("spin");
-  const bt =document.getElementById("btnTxt");
-  btn.disabled=true; sp.style.display="block"; bt.textContent="Consultando...";
-  
-  try {
-    await fetch(`${PROXY}/api/refresh`);
-    
-    let isRefreshing = true;
-    let attempts = 0;
-    while(isRefreshing && attempts < 30) { 
-        await new Promise(r => setTimeout(r, 2000));
-        const st = await fetch(`${PROXY}/api/status`).then(r=>r.json());
-        isRefreshing = st.is_refreshing;
-        attempts++;
-    }
-
-    const d = await fetch(`${PROXY}/api/datos`).then(r=>r.json());
-    DATA = d;
-    addEvoPoint(d);
-    render();
-    
-    const src = d.fuente==="api_onpe"         ? "✅ ONPE en vivo" :
-                d.fuente==="api_onpe_parcial"  ? "🟡 ONPE parcial" : "⚠️ datos locales";
-    setAlert("ok", `${src} — ${(+d.pctActas).toFixed(3)}% de actas · ${d.regiones?.length||0} regiones cargadas`);
-    setTimeout(()=>setAlert("",""), 6000);
-    
-  } catch(e) {
-    setAlert("warn", `⚠️ <strong>Proxy no responde.</strong> Revisa el backend en Render.`);
-  } finally {
-    btn.disabled=false; sp.style.display="none"; bt.textContent="↻ Actualizar";
-  }
+  const sp=document.getElementById("spin"),bt=document.getElementById("btnTxt");
+  btn.disabled=true;sp.style.display="block";bt.textContent="Consultando…";
+  try{
+    await fetch(`${API}/api/refresh`,{signal:AbortSignal.timeout(15000)});
+    const d=await fetch(`${API}/api/datos`,{signal:AbortSignal.timeout(10000)}).then(r=>r.json());
+    DATA=d; addEvoPoint(d); render();
+    const src=d.fuente==="api_onpe"?"✅ ONPE en vivo":d.fuente==="api_onpe_parcial"?"🟡 ONPE parcial":"⚠️ datos locales";
+    setAlert("ok",`${src} — ${(+d.pctActas).toFixed(3)}% actas · ${d.candidatos?.length||0} candidatos · ${d.regiones?.length||0} regiones`);
+    setTimeout(()=>setAlert("",""),7000);
+  }catch(e){
+    setAlert("warn",`⚠️ <strong>Proxy no responde.</strong> Ejecuta: <code>python3 onpe_proxy.py</code>`);
+  }finally{btn.disabled=false;sp.style.display="none";bt.textContent="↻ Actualizar";}
 }
 
-// --- SOLUCIÓN: Polling automático acelerado a 10s ---
-async function silentPoll() {
-  try {
-    // Consultamos la memoria RAM del proxy en Render (instantáneo y no satura a la ONPE)
-    const d = await fetch(`${PROXY}/api/datos`, {signal:AbortSignal.timeout(5000)}).then(r=>r.json());
-    
-    // Si es la primera carga o el timestamp del backend cambió, renderizamos solos
-    if (!DATA || d.timestamp !== DATA.timestamp) {
-      DATA = d; 
-      addEvoPoint(d); 
-      render();
-      setAlert("ok", `🔄 Actualizado automáticamente — ${(+d.pctActas).toFixed(3)}% actas`);
-      setTimeout(()=>setAlert("",""), 4000);
-    }
+async function silentPoll(){
+  try{
+    const d=await fetch(`${API}/api/datos`,{signal:AbortSignal.timeout(8000)}).then(r=>r.json());
+    if(d.timestamp!==DATA?.timestamp){DATA=d;addEvoPoint(d);render();
+      setAlert("ok",`🔄 Actualizado — ${(+d.pctActas).toFixed(3)}% actas · ${d.regiones?.length||0} regiones`);
+      setTimeout(()=>setAlert("",""),4000);}
     setPill(d.fuente);
-  } catch(e) {}
+  }catch(e){}
 }
 
-function addEvoPoint(d) {
-  const pct = +d.pctActas;
-  const lastLabel = EVO.labels[EVO.labels.length - 1]; 
-  
-  if (!pct || pct <= +lastLabel.replace('%','') + 0.001) return;
-  const lbl = pct.toFixed(3)+"%"; 
-  EVO.labels.push(lbl);
-  EVO.top7.forEach((cm) => {
-    const c = (d.candidatos || []).find(x =>
-      x.partido.toUpperCase().includes(cm.p.toUpperCase().split(" ")[0]) ||
-      x.nombre.toLowerCase().includes(cm.n.toLowerCase().split(" ")[cm.n.toLowerCase().split(" ").length - 1])
-    );
-    cm.d.push(c ? +c.pct : (cm.d[cm.d.length - 1]||0));
-    cm.v.push(c ? +c.votos : (cm.v[cm.v.length - 1]||0));
+function addEvoPoint(d){
+  const pct=+d.pctActas;
+  if(!pct||pct<=+EVO.labels.at(-1)+0.5)return;
+  EVO.labels.push(pct.toFixed(2)+"%");
+  EVO.top7.forEach(m=>{
+    const c=d.candidatos?.find(x=>x.nombre.toLowerCase().includes(m.n.toLowerCase().split(" ").at(-1)));
+    m.d.push(c?+c.pct:(m.d.at(-1)||0));
   });
 }
 
-function render() {
-  if (!DATA) return;
-  renderStats();
-  renderCands();
-  renderResumen();
-  renderDonut();
-  if (document.getElementById("sec-evolucion").classList.contains("active")) {
-      renderEvo();
-      renderEvoHeatmap();
-  }
-  if (document.getElementById("sec-regiones").classList.contains("active"))  renderMapAndRegions();
+// ── RENDER ─────────────────────────────────────────────────
+function render(){
+  if(!DATA)return;
+  renderStats(); renderCands(); renderResumen(); renderDonut();
+  if(document.getElementById("sec-evolucion").classList.contains("active"))renderEvo();
+  if(document.getElementById("sec-regiones").classList.contains("active"))renderRegiones();
+  if(document.getElementById("sec-proyeccion").classList.contains("active"))renderProyeccion();
   setPill(DATA.fuente);
 }
 
-function renderStats() {
-  const d = DATA;
-  const pct  = (+d.pctActas||0).toFixed(3);
-  const cont = (+d.actasContabilizadas||0).toLocaleString("es-PE");
-  const tot  = (+d.actasTotales||92766);
-  const pend = +d.actasPendientes||0;
-  const jee  = +d.actasJEE||0;
-  const emit = +d.votosEmitidos||0;
-  const part = +d.participacion||0;
-
-  document.getElementById("sPct").textContent   = pct+"%";
-  document.getElementById("sActas").textContent = `${cont} de ${tot.toLocaleString("es-PE")}`;
-  document.getElementById("sPend").textContent  = pend.toLocaleString("es-PE");
-  document.getElementById("sPendPct").textContent = `${((pend/tot)*100).toFixed(1)}% del total`;
-  document.getElementById("sJEE").textContent   = jee.toLocaleString("es-PE");
-  document.getElementById("sEmitidos").textContent = emit>0 ? emit.toLocaleString("es-PE") : "–";
-  document.getElementById("sParticipacion").textContent = part>0 ? `participación: ${part.toFixed(2)}%` : "–";
-  document.getElementById("progLbl").textContent = pct+"%";
-  document.getElementById("progFill").style.width = Math.min(+d.pctActas||0,100)+"%";
-  const ts = d.timestamp||d.serverTime;
-  if (ts) document.getElementById("lastUpdate").textContent =
-    "Corte: " + new Date(ts).toLocaleString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
+function renderStats(){
+  const d=DATA;
+  const pct=(+d.pctActas||0).toFixed(3);
+  const tot=+d.actasTotales||92766;
+  const cont=+d.actasContabilizadas||0;
+  const pend=+d.actasPendientes||0;
+  const jee=+d.actasJEE||0;
+  document.getElementById("sPct").textContent=pct+"%";
+  document.getElementById("sActas").textContent=`${cont.toLocaleString("es-PE")} de ${tot.toLocaleString("es-PE")}`;
+  document.getElementById("sPend").textContent=pend.toLocaleString("es-PE");
+  document.getElementById("sPendPct").textContent=`${((pend/tot)*100).toFixed(1)}% del total`;
+  document.getElementById("sJEE").textContent=jee.toLocaleString("es-PE");
+  document.getElementById("sEmitidos").textContent=(+d.votosEmitidos||0)>0?(+d.votosEmitidos).toLocaleString("es-PE"):"–";
+  document.getElementById("sParticipacion").textContent=(+d.participacion||0)>0?`${(+d.participacion).toFixed(2)}% participación`:"–";
+  document.getElementById("progLbl").textContent=pct+"%";
+  document.getElementById("progFill").style.width=Math.min(+d.pctActas||0,100)+"%";
+  const ts=d.timestamp||d.serverTime;
+  if(ts)document.getElementById("lastUpdate").textContent=
+    "Corte: "+new Date(ts).toLocaleString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
 }
 
-function processCandidatos(dataCands) {
-  if (!dataCands || !dataCands.length) return [];
-  let mainCands = [];
-  let otrosVotos = 0;
-  let otrosPct = 0;
-
-  [...dataCands].sort((a,b)=>b.pct-a.pct).forEach(c => {
-    if (+c.pct >= 1.0) {
-      mainCands.push(c);
-    } else {
-      otrosVotos += (+c.votos || 0);
-      otrosPct += (+c.pct || 0);
-    }
-  });
-
-  if (otrosVotos > 0 || otrosPct > 0) {
-    mainCands.push({
-      nombre: "Otros",
-      partido: "Agrupaciones < 1%",
-      votos: otrosVotos,
-      pct: otrosPct,
-      isOtros: true
-    });
-  }
-  return mainCands;
-}
-
-function renderCands() {
-  const cands = processCandidatos(DATA.candidatos);
-  if (!cands.length) return;
-  const max = cands[0].pct;
-  const totalEmitidos = +DATA.votosEmitidos || 0;
-
-  document.getElementById("candList").innerHTML = cands.map((c,i)=>{
-    const col = c.isOtros ? "#8b8b8b" : (COLORS[i]||COLORS[COLORS.length - 1]);
-    const bw  = (c.pct/max*100).toFixed(1);
-    const rc  = (!c.isOtros && i===0) ? "r1" : (!c.isOtros && i===1) ? "r2" : (!c.isOtros && i===2) ? "r3" : "";
-    const pctEmitidos = totalEmitidos>0 && c.votos>0
-      ? `<div class="cpct-emitidos">${((c.votos/totalEmitidos)*100).toFixed(2)}% s/emitidos</div>` : "";
-    const votos = c.votos>0
-      ? `<div class="cvotos">${c.votos.toLocaleString("es-PE")} votos</div>` : "";
-    const badge = c.isOtros ? "+" : (i+1);
-
-    return `<div class="crow ${rc}">
-      <div class="rank-badge" style="background:${col}">${badge}</div>
-      <div class="cinfo">
-        <div class="cname">${c.nombre}</div>
-        <div class="cparty">${c.partido}</div>
-        ${votos}
-      </div>
-      <div class="cbar-wrap">
-        <div class="ctrack"><div class="cfill" style="width:${bw}%;background:${col}"></div></div>
-      </div>
-      <div class="cpct-col">
-        <div class="cpct" style="color:${col}">${(+c.pct).toFixed(3)}%</div>
-        ${pctEmitidos}
-      </div>
+function renderCands(){
+  const cands=[...(DATA.candidatos||[])].sort((a,b)=>b.pct-a.pct);
+  if(!cands.length){document.getElementById("candList").innerHTML='<div style="color:var(--faint);padding:1rem 0">Sin datos de candidatos</div>';return;}
+  const max=cands[0].pct, totalEmit=+DATA.votosEmitidos||0;
+  document.getElementById("candList").innerHTML=cands.map((c,i)=>{
+    const col=COLORS[i]||COLORS.at(-1), bw=(c.pct/max*100).toFixed(1);
+    const rc=i===0?"r1":i===1?"r2":i===2?"r3":"";
+    const subEmit=totalEmit>0&&c.votos>0?`<div class="cpct-sub">${((c.votos/totalEmit)*100).toFixed(3)}% s/emitidos</div>`:"";
+    const votos=c.votos>0?`<div class="cvotos">${c.votos.toLocaleString("es-PE")} votos válidos</div>`:"";
+    return`<div class="crow ${rc}">
+      <div class="rbadge" style="background:${col}">${i+1}</div>
+      <div><div class="cname">${c.nombre}</div><div class="cparty">${c.partido}</div>${votos}</div>
+      <div class="cbar-wrap"><div class="ctrack"><div class="cfill" style="width:${bw}%;background:${col}"></div></div></div>
+      <div class="cpct-col"><div class="cpct" style="color:${col}">${(+c.pct).toFixed(3)}%</div>${subEmit}</div>
     </div>`;
   }).join("");
 }
 
-function renderResumen() {
-  const d = DATA;
-  const vv = +d.votosValidos||0;
-  const ve = +d.votosEmitidos||0;
-  const vb = +d.votosBlancos||0;
-  const vn = +d.votosNulos||0;
-  const pctB = vv>0 ? ((vb/(vv+vb+vn))*100).toFixed(2)+"%" : "–";
-  const pctN = vv>0 ? ((vn/(vv+vb+vn))*100).toFixed(2)+"%" : "–";
-
-  const cards = [
-    {l:"Actas totales",    v: (+d.actasTotales||92766).toLocaleString("es-PE"), s:""},
-    {l:"Contabilizadas",   v: (+d.actasContabilizadas||0).toLocaleString("es-PE"), s:(+d.pctActas||0).toFixed(3)+"%"},
-    {l:"Pendientes",       v: (+d.actasPendientes||0).toLocaleString("es-PE"), s:"sin procesar"},
-    {l:"Enviadas al JEE",  v: (+d.actasJEE||0).toLocaleString("es-PE"), s:"observadas"},
-    {l:"Votos emitidos",   v: ve>0?ve.toLocaleString("es-PE"):"–", s:d.participacion>0?(+d.participacion).toFixed(2)+"% participación":""},
-    {l:"Votos válidos",    v: vv>0?vv.toLocaleString("es-PE"):"–", s:ve>0&&vv>0?((vv/ve)*100).toFixed(2)+"% s/emitidos":""},
-    {l:"Votos en blanco",  v: vb>0?vb.toLocaleString("es-PE"):"–", s:pctB},
-    {l:"Votos nulos",      v: vn>0?vn.toLocaleString("es-PE"):"–", s:pctN},
+function renderResumen(){
+  const d=DATA, vv=+d.votosValidos||0, ve=+d.votosEmitidos||0,
+        vb=+d.votosBlancos||0, vn=+d.votosNulos||0;
+  const pctB=vv>0?((vb/(vv+vb+vn))*100).toFixed(2)+"%":"–";
+  const pctN=vv>0?((vn/(vv+vb+vn))*100).toFixed(2)+"%":"–";
+  const cards=[
+    {l:"Actas totales",  v:(+d.actasTotales||92766).toLocaleString("es-PE"), s:""},
+    {l:"Contabilizadas", v:(+d.actasContabilizadas||0).toLocaleString("es-PE"), s:(+d.pctActas||0).toFixed(3)+"%"},
+    {l:"Pendientes",     v:(+d.actasPendientes||0).toLocaleString("es-PE"), s:"sin procesar"},
+    {l:"Al JEE",         v:(+d.actasJEE||0).toLocaleString("es-PE"), s:"observadas"},
+    {l:"Votos emitidos", v:ve>0?ve.toLocaleString("es-PE"):"–", s:d.participacion>0?(+d.participacion).toFixed(2)+"% participación":""},
+    {l:"Votos válidos",  v:vv>0?vv.toLocaleString("es-PE"):"–", s:ve>0&&vv>0?((vv/ve)*100).toFixed(2)+"% s/emitidos":""},
+    {l:"Votos blancos",  v:vb>0?vb.toLocaleString("es-PE"):"–", s:pctB},
+    {l:"Votos nulos",    v:vn>0?vn.toLocaleString("es-PE"):"–", s:pctN},
   ];
-  document.getElementById("resumen").innerHTML = cards.map(c=>
-    `<div class="res-card">
-      <div class="res-label">${c.l}</div>
-      <div class="res-value">${c.v}</div>
-      ${c.s?`<div class="res-sub">${c.s}</div>`:""}
-    </div>`
+  document.getElementById("resumen").innerHTML=cards.map(c=>
+    `<div class="res-card"><div class="res-lbl">${c.l}</div><div class="res-val">${c.v}</div>${c.s?`<div class="res-sub">${c.s}</div>`:""}</div>`
   ).join("");
 }
 
-function renderDonut() {
-  const cands = processCandidatos(DATA.candidatos);
-  if (!cands.length) return;
-  const surf = getComputedStyle(document.body).getPropertyValue("--surface").trim()||"#fff";
-  if (donutChart) donutChart.destroy();
-  
-  const bgColors = cands.map((c, i) => c.isOtros ? "#8b8b8b" : (COLORS[i] || COLORS[COLORS.length-1]));
-
-  donutChart = new Chart(document.getElementById("donutC"),{
+function renderDonut(){
+  const cands=[...(DATA.candidatos||[])].sort((a,b)=>b.pct-a.pct).slice(0,8);
+  if(!cands.length)return;
+  const surf=getComputedStyle(document.body).getPropertyValue("--surface").trim()||"#fff";
+  if(donutChart)donutChart.destroy();
+  donutChart=new Chart(document.getElementById("donutC"),{
     type:"doughnut",
-    data:{
-      labels: cands.map(c=>c.nombre),
-      datasets:[{data:cands.map(c=>+c.pct),backgroundColor:bgColors,borderWidth:2,borderColor:surf}]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,cutout:"58%",
-      plugins:{
-        legend:{display:true,position:"right",labels:{boxWidth:11,font:{size:11},padding:9}},
-        tooltip:{callbacks:{label:i=>` ${i.label}: ${i.parsed.toFixed(3)}%`}}
-      }
-    }
+    data:{labels:cands.map(c=>c.nombre),
+          datasets:[{data:cands.map(c=>+c.pct),backgroundColor:cands.map((_,i)=>COLORS[i]),borderWidth:2,borderColor:surf}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:"58%",
+      plugins:{legend:{display:true,position:"right",labels:{boxWidth:11,font:{size:11},padding:9}},
+        tooltip:{callbacks:{label:i=>` ${i.label}: ${i.parsed.toFixed(3)}%`}}}}
   });
 }
 
-function renderEvo() {
-  const isDark = matchMedia("(prefers-color-scheme:dark)").matches;
+function renderEvo(){
+  const isDark=matchMedia("(prefers-color-scheme:dark)").matches;
   const gc=isDark?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)";
   const tc=isDark?"rgba(255,255,255,.4)":"rgba(0,0,0,.45)";
-  const ttb=isDark?"#2a2a2e":"#fff";
-  const ttd=isDark?"#444":"#ddd";
-
-  const labels = EVO.labels;
-  const plotCands = EVO.top7.slice(0, 6);
-
-  document.getElementById("evoLeg").innerHTML = plotCands.map(m=>
-    `<div class="leg">
-      <div class="ldot" style="background:${m.c}"></div>
-      <span class="leg-name">${m.n}</span>
-      <span style="color:var(--faint);font-size:10px">&nbsp;·&nbsp;${m.p}</span>
-    </div>`).join("");
-
-  document.getElementById("evoNota").innerHTML =
-    `Cómputo oficial ONPE. Los primeros puntos tienen sesgo urbano (Lima + exterior), que infló a López Aliaga. ` +
-    `Cada actualización agrega automáticamente un nuevo punto al gráfico. Las barras se reordenan en tiempo real.`;
-
+  document.getElementById("evoLeg").innerHTML=EVO.top7.map(m=>
+    `<div class="leg"><div class="ldot" style="background:${m.c}"></div>
+     <strong style="font-weight:500">${m.n}</strong>&nbsp;<span style="color:var(--faint);font-size:10px">· ${m.p}</span></div>`).join("");
+  document.getElementById("evoNota").innerHTML=
+    `Cómputo oficial ONPE. Los primeros puntos reflejan sesgo urbano (Lima + exterior). `+
+    `Al 53.9%: <strong>Fujimori 17.0% · López Aliaga 14.5% · Nieto 12.8%</strong>. `+
+    `Cada actualización agrega un nuevo punto automáticamente.`;
   const dashes=[[],[],[6,3],[3,3],[8,4],[4,4],[2,3]];
-
-  if (evoChart) evoChart.destroy();
-  evoChart = new Chart(document.getElementById("evoC"),{
+  if(evoChart)evoChart.destroy();
+  evoChart=new Chart(document.getElementById("evoC"),{
     type:"line",
-    data:{
-      labels: labels,
-      datasets: plotCands.map((m,i)=>({
-        label:m.n, data:m.d,
-        borderColor:m.c, backgroundColor:m.c+"15",
-        borderWidth:2.5, borderDash:dashes[i]||[],
-        pointRadius:5,pointHoverRadius:7,
-        pointBackgroundColor:m.c,pointBorderColor:"#fff",pointBorderWidth:1.5,
-        tension:.3,fill:false
-      }))
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
+    data:{labels:EVO.labels,datasets:EVO.top7.map((m,i)=>({
+      label:m.n,data:m.d,borderColor:m.c,backgroundColor:m.c+"15",
+      borderWidth:2.5,borderDash:dashes[i]||[],
+      pointRadius:5,pointHoverRadius:7,pointBackgroundColor:m.c,
+      pointBorderColor:"#fff",pointBorderWidth:1.5,tension:.3,fill:false}))},
+    options:{responsive:true,maintainAspectRatio:false,
       interaction:{mode:"index",intersect:false},
-      plugins:{
-        legend:{display:false},
-        tooltip:{
-          backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
-          titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
-          titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
-          itemSort: (a, b) => b.parsed.y - a.parsed.y, 
-          callbacks:{
-            title:i=>`Actas contabilizadas: ${i[0].label}`,
-            label:i=>` ${i.dataset.label}: ${i.parsed.y.toFixed(3)}%`
-          }
-        }
-      },
+      plugins:{legend:{display:false},tooltip:{
+        backgroundColor:isDark?"#2a2a2e":"#fff",borderColor:isDark?"#444":"#ddd",borderWidth:.5,
+        titleColor:isDark?"#e0e0e0":"#111",bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
+        titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
+        callbacks:{title:i=>`Actas: ${i[0].label}`,label:i=>` ${i.dataset.label}: ${i.parsed.y.toFixed(2)}%`}}},
       scales:{
-        x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxRotation:0}},
-        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>v.toFixed(1)+"%"},min:0,suggestedMax:26}
-      }
-    }
-  });
-
-  if (evoVotesChart) evoVotesChart.destroy();
-  
-  const rankDatasets = Array.from({length: 6}, (_, rankIndex) => ({
-      label: `Puesto ${rankIndex + 1}`,
-      data: [],
-      backgroundColor: [],
-      candNames: [],
-      borderRadius: 4,
-      borderWidth: 0
-  }));
-
-  for (let i = 0; i < labels.length; i++) {
-      const candsAtTime = plotCands.map(c => ({ n: c.n, v: c.v[i], c: c.c }));
-      candsAtTime.sort((a, b) => b.v - a.v);
-      
-      for (let rank = 0; rank < 6; rank++) {
-          if (candsAtTime[rank]) {
-              rankDatasets[rank].data.push(candsAtTime[rank].v);
-              rankDatasets[rank].backgroundColor.push(candsAtTime[rank].c);
-              rankDatasets[rank].candNames.push(candsAtTime[rank].n);
-          } else {
-              rankDatasets[rank].data.push(null);
-              rankDatasets[rank].backgroundColor.push("transparent");
-              rankDatasets[rank].candNames.push("");
-          }
-      }
-  }
-
-  evoVotesChart = new Chart(document.getElementById("evoVotesC"),{
-    type:"bar",
-    data:{
-      labels: labels,
-      datasets: rankDatasets
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      interaction:{mode:"index",intersect:false},
-      plugins:{
-        legend:{display:false},
-        tooltip:{
-          backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
-          titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
-          titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
-          itemSort: (a, b) => b.parsed.y - a.parsed.y, 
-          callbacks:{
-            title:i=>`Actas contabilizadas: ${i[0].label}`,
-            label:i=>{
-                const ds = i.dataset;
-                const idx = i.dataIndex;
-                const candName = ds.candNames[idx];
-                return ` ${candName}: ${i.parsed.y.toLocaleString("es-PE")} votos`;
-            }
-          }
-        }
-      },
-      scales:{
-        x:{grid:{display:false},ticks:{color:tc,font:{size:11},maxRotation:0}},
-        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>(v/1000000).toFixed(1)+"M"}}
-      }
-    }
+        x:{title:{display:true,text:"% actas contabilizadas",font:{size:11},color:tc},
+           grid:{color:gc},ticks:{color:tc,font:{size:11},maxRotation:0}},
+        y:{title:{display:true,text:"% votos válidos",font:{size:11},color:tc},
+           grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>v+"%"},
+           min:0,suggestedMax:26}}}
   });
 }
 
-window.toggleHmFilter = (cb) => {
-    if (cb.checked) {
-        hmSelectedCands.push(cb.value);
-    } else {
-        hmSelectedCands = hmSelectedCands.filter(n => n !== cb.value);
-    }
-    renderEvoHeatmap();
-};
-
-function renderEvoHeatmap() {
-  const labels = EVO.labels;
-  const heatmapCandsPool = EVO.top7.slice(0, 6); 
-  
-  if (!hmSelectedCands) {
-      hmSelectedCands = EVO.top7.slice(1, 6).map(c => c.n); 
+function renderRegiones(){
+  const regs=DATA.regiones||[];
+  const grid=document.getElementById("regGrid");
+  if(!regs.length){
+    grid.innerHTML=`<div style="grid-column:1/-1;color:var(--muted);font-size:12px;padding:.5rem 0">
+      No hay datos regionales disponibles aún. Pulsa <strong>↻ Actualizar</strong> para intentarlo.
+    </div>`;
+    document.getElementById("regDet").classList.remove("show");
+    return;
   }
-
-  let filterHtml = `<div class="hm-filters">
-                      <div class="hm-filters-title">Filtrar Candidatos:</div>`;
-  heatmapCandsPool.forEach(c => {
-      const isChecked = hmSelectedCands.includes(c.n) ? "checked" : "";
-      filterHtml += `<label>
-                        <input type="checkbox" value="${c.n}" onchange="toggleHmFilter(this)" ${isChecked}>
-                        <span style="color:${c.c}">■</span> ${c.n}
-                     </label>`;
-  });
-  filterHtml += `</div>`;
-  document.getElementById("hmFiltersContainer").innerHTML = filterHtml;
-
-  const cands = EVO.top7.filter(c => hmSelectedCands.includes(c.n));
-
-  if (cands.length === 0) {
-      document.getElementById("heatmapContainer").innerHTML = `<div style="padding:1rem;color:var(--faint);font-size:12px;">Selecciona al menos un candidato para calcular el mapa de calor.</div>`;
-      return;
-  }
-
-  let html = `<table class="heatmap-table">
-                <thead><tr>
-                  <th style="text-align:left">Candidato</th>`;
-  
-  for (let i = 1; i < labels.length; i++) {
-      html += `<th>${labels[i]}</th>`;
-  }
-  html += `</tr></thead><tbody>`;
-
-  const scales = [];
-  for (let i = 1; i < labels.length; i++) {
-      let variations = cands.map(c => {
-          let prev = c.v[i-1];
-          let curr = c.v[i];
-          if (prev === 0) return curr > 0 ? 100 : 0; 
-          return Math.log(curr / prev) * 100;
-      });
-      
-      let minV = Math.min(...variations);
-      let maxV = Math.max(...variations);
-      
-      let scale = d3.scaleLinear().domain([minV, maxV]).range(["#b3e5fc", "#ef9a9a"]);
-      scales.push(scale);
-  }
-
-  cands.forEach(c => {
-      html += `<tr>
-                <td class="cand-name">
-                  <div style="display:flex;align-items:center;gap:6px">
-                    <div class="ldot" style="background:${c.c}"></div>${c.n}
-                  </div>
-                </td>`;
-      for (let i = 1; i < labels.length; i++) {
-          let prev = c.v[i-1];
-          let curr = c.v[i];
-          let diff = 0;
-          
-          if (prev === 0) diff = curr > 0 ? 100 : 0;
-          else diff = Math.log(curr / prev) * 100;
-          
-          let bg = scales[i-1](diff);
-          
-          html += `<td class="hm-cell" style="background-color: ${bg};">
-                      +${diff.toFixed(2)}%
-                   </td>`;
-      }
-      html += `</tr>`;
-  });
-  html += `</tbody></table>`;
-
-  document.getElementById("heatmapContainer").innerHTML = html;
-}
-
-function normalizeMapName(str) {
-  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-}
-
-function getCandidateColorByGlobalList(candName) {
-  if (!DATA || !DATA.candidatos) return "#a0a09a";
-  const idx = DATA.candidatos.findIndex(c => c.nombre === candName);
-  return idx !== -1 && COLORS[idx] ? COLORS[idx] : "#a0a09a";
-}
-
-window.deselectRegion = () => {
-    selReg = null;
-    d3.selectAll("path")
-      .style("opacity", 1)
-      .attr("stroke", "var(--surface)")
-      .attr("stroke-width", 0.8);
-    renderRegDet();
-};
-
-async function renderMapAndRegions() {
-  if (!DATA) return;
-  const regs = DATA.regiones || [];
-  
-  if (!geoJsonData) {
-    try {
-        geoJsonData = await fetch(`${PROXY}/api/mapa`).then(r => r.json());
-    } catch(e) {
-        document.getElementById("mapContainer").innerHTML = `<div style="color:var(--red)">No se pudo cargar el mapa. Verifica la conexión del proxy.</div>`;
-        return;
-    }
-  }
-
-  const legendDiv = document.getElementById("mapLegend");
-  const topCands = (DATA.candidatos || []).slice(0, 6); 
-  if (topCands.length > 0) {
-      legendDiv.innerHTML = topCands.map((c, i) => `
-        <div class="leg">
-          <div class="ldot" style="background:${COLORS[i]}"></div>
-          <span class="leg-name">${c.nombre}</span>
-        </div>`).join("");
-      legendDiv.style.display = "flex";
-  }
-
-  const container = d3.select("#mapContainer");
-  container.selectAll("*").remove(); 
-
-  const width = container.node().getBoundingClientRect().width || 400;
-  const height = 460;
-  
-  const svg = container.append("svg")
-      .attr("width", "100%")
-      .attr("height", height)
-      .style("overflow", "visible");
-
-  const projection = d3.geoMercator().fitSize([width, height], geoJsonData);
-  const path = d3.geoPath().projection(projection);
-  const tooltip = d3.select("#mapTooltip");
-
-  svg.selectAll("path")
-      .data(geoJsonData.features)
-      .enter()
-      .append("path")
-      .attr("d", path)
-      .attr("stroke", "var(--surface)")
-      .attr("stroke-width", 0.8)
-      .attr("fill", d => {
-          const mName = normalizeMapName(d.properties.name);
-          const r = regs.find(reg => normalizeMapName(reg.nombre) === mName);
-          return (r && r.lider) ? getCandidateColorByGlobalList(r.lider) : "var(--surface2)";
-      })
-      .style("opacity", function(d) {
-          if (selReg === null) return 1;
-          const mName = normalizeMapName(d.properties.name);
-          const idx = regs.findIndex(reg => normalizeMapName(reg.nombre) === mName);
-          return idx === selReg ? 1 : 0.4;
-      })
-      .style("cursor", "pointer")
-      .style("transition", "opacity 0.2s")
-      .on("mouseover", function(event, d) {
-          d3.select(this).attr("stroke", "var(--text)").attr("stroke-width", 1.5);
-          
-          const mName = normalizeMapName(d.properties.name);
-          const r = regs.find(reg => normalizeMapName(reg.nombre) === mName);
-          
-          let html = `<div class="title">${d.properties.name.toUpperCase()}</div>`;
-          if (r) {
-              const cColor = getCandidateColorByGlobalList(r.lider);
-              html += `<div class="lider"><div class="ldot" style="background:${cColor}"></div>${r.lider} — ${r.pctLider}%</div>`;
-              html += `<div style="font-size:10px;color:var(--faint);margin-top:4px;">Actas contab: ${r.pctActas}%</div>`;
-          } else {
-              html += `<div style="font-size:11px;color:var(--faint);">Sin datos oficiales</div>`;
-          }
-
-          tooltip.html(html).style("opacity", 1);
-      })
-      .on("mousemove", function(event) {
-          tooltip.style("left", (event.pageX + 15) + "px")
-                 .style("top", (event.pageY - 15) + "px");
-      })
-      .on("mouseout", function() {
-          d3.select(this).attr("stroke", "var(--surface)").attr("stroke-width", 0.8);
-          tooltip.style("opacity", 0);
-      })
-      .on("click", function(event, d) {
-          const mName = normalizeMapName(d.properties.name);
-          const idx = regs.findIndex(reg => normalizeMapName(reg.nombre) === mName);
-          
-          if (idx !== -1) {
-              if (selReg === idx) {
-                  window.deselectRegion();
-              } else {
-                  selReg = idx;
-                  d3.selectAll("path").style("opacity", 0.4);
-                  d3.select(this).style("opacity", 1);
-                  renderRegDet();
-              }
-          }
-      });
-      
+  grid.innerHTML=regs.map((r,i)=>
+    `<div class="rcard ${selReg===i?"sel":""}" onclick="toggleReg(${i})">
+      <div class="rname">${r.nombre}</div>
+      <div class="rlider">${r.lider}</div>
+      <div class="rpct">${(+r.pctLider).toFixed(1)}%</div>
+      <div class="ractas">${r.pctActas>0?`Actas: ${(+r.pctActas).toFixed(1)}%`:"sin datos"}</div>
+    </div>`).join("");
   renderRegDet();
 }
 
-function renderRegDet() {
-  const el = document.getElementById("regDet");
-  
-  if (selReg === null || !DATA.regiones?.[selReg]) { 
-      el.innerHTML = `
-         <div style="text-align:center; padding:5rem 1rem; color:var(--faint)">
-            <p style="font-size:36px; margin-bottom:15px">🗺️</p>
-            <h3 style="color:var(--text); font-size:16px; margin-bottom:5px;">Mapa Nacional</h3>
-            <p style="font-size:13px; line-height:1.6;">Haz clic en un departamento del mapa para ver los resultados oficiales detallados de esa región.</p>
-         </div>`;
-      el.classList.add("show"); 
-      return; 
-  }
-  
-  const r  = DATA.regiones[selReg];
-  const candsGrouped = processCandidatos(r.candidatos || []);
-  const mx = candsGrouped[0]?.pct||100;
-  
-  el.innerHTML = `
-    <div class="rdet-title" style="display:flex; justify-content:space-between; align-items:flex-start;">
-      <div>
-        📍 ${r.nombre.toUpperCase()}
-        <span style="display:block; font-size:11px; font-weight:400; color:var(--muted); margin-top:2px;">
-          ~${(+r.pctActas).toFixed(1)}% de actas contabilizadas
-        </span>
-      </div>
-      <button class="btn" onclick="deselectRegion()" style="padding: 4px 10px; font-size:11px; background:var(--surface2); border:none;">
-        ✕ Cerrar
-      </button>
-    </div>
-    <div class="clist" style="max-height: 380px; overflow-y: auto; padding-right:5px;">${candsGrouped.map((c,i)=>{
-      const col = c.isOtros ? "#8b8b8b" : (COLORS[i]||COLORS[COLORS.length - 1]);
-      const badge = c.isOtros ? "+" : (i+1);
-      return `<div class="crow">
-        <div class="rank-badge" style="background:${col};width:22px;height:22px;font-size:10px">${badge}</div>
-        <div class="cinfo"><div class="cname" style="font-size:12px">${c.nombre}</div><div class="cparty">${c.partido}</div></div>
-        <div class="cbar-wrap">
-          <div class="ctrack"><div class="cfill" style="width:${(c.pct/mx*100).toFixed(1)}%;background:${col}"></div></div>
-        </div>
-        <div class="cpct-col">
-          <div class="cpct" style="color:${col};font-size:14px">${(+c.pct).toFixed(3)}%</div>
-          <div style="font-size:9px;color:var(--faint);margin-top:2px">${c.votos.toLocaleString('es-PE')} votos</div>
-        </div>
-      </div>`
-    }).join("")}
-    </div>`;
+function renderRegDet(){
+  const el=document.getElementById("regDet");
+  if(selReg===null||!DATA.regiones?.[selReg]){el.classList.remove("show");return;}
+  const r=DATA.regiones[selReg], mx=r.candidatos?.[0]?.pct||100;
+  const actasInfo=r.pctActas>0
+    ?`~${(+r.pctActas).toFixed(1)}% de actas${r.actasCont>0?` · ${r.actasCont.toLocaleString("es-PE")} contabilizadas`:""}`
+    :"actas: sin datos";
+  el.innerHTML=`<div class="rdet-title">${r.nombre} <span style="font-size:12px;font-weight:400;color:var(--muted)">— ${actasInfo}</span></div>
+    <div class="clist">${(r.candidatos||[]).map((c,i)=>`
+      <div class="crow rdet">
+        <div class="rbadge" style="background:${COLORS[i]||COLORS.at(-1)};width:22px;height:22px;font-size:10px">${i+1}</div>
+        <div><div class="cname" style="font-size:12px">${c.nombre}</div><div class="cparty">${c.partido}</div>
+          ${c.votos>0?`<div class="cvotos">${c.votos.toLocaleString("es-PE")} votos</div>`:""}</div>
+        <div class="cbar-wrap"><div class="ctrack">
+          <div class="cfill" style="width:${(c.pct/mx*100).toFixed(1)}%;background:${COLORS[i]||COLORS.at(-1)}"></div>
+        </div></div>
+        <div class="cpct-col"><div class="cpct" style="color:${COLORS[i]||COLORS.at(-1)};font-size:14px">${(+c.pct).toFixed(2)}%</div></div>
+      </div>`).join("")}</div>`;
   el.classList.add("show");
 }
 
-function setPill(f) {
-  const el = document.getElementById("sourcePill");
-  if (f==="api_onpe")        { el.className="pill pill-live";     el.textContent="🟢 ONPE en vivo"; }
-  else if(f==="api_onpe_parcial"){ el.className="pill pill-partial"; el.textContent="🟡 ONPE parcial"; }
-  else                        { el.className="pill pill-fallback"; el.textContent="🔴 datos locales"; }
+// ── PROYECCIÓN ─────────────────────────────────────────────
+function initProjToggles(){
+  const regs=DATA.regiones||[];
+  if(!regs.length)return;
+  // Top 4 candidatos más frecuentes como líderes o más votados a nivel nacional
+  const allCands=new Map();
+  regs.forEach(r=>(r.candidatos||[]).slice(0,4).forEach(c=>{
+    const k=c.nombre;
+    if(!allCands.has(k))allCands.set(k,{nombre:c.nombre,partido:c.partido,total:0,count:0});
+    allCands.get(k).total+=c.pct; allCands.get(k).count+=1;
+  }));
+  // También incluir top 4 nacionales
+  (DATA.candidatos||[]).slice(0,4).forEach(c=>{
+    if(!allCands.has(c.nombre))allCands.set(c.nombre,{nombre:c.nombre,partido:c.partido,total:c.pct,count:1});
+  });
+  const sorted=[...allCands.values()].sort((a,b)=>b.total/b.count-a.total/a.count).slice(0,7);
+  projActive=new Set(sorted.slice(0,4).map((_,i)=>i));
+  const container=document.getElementById("candToggles");
+  container.innerHTML=sorted.map((c,i)=>{
+    const col=COLORS[i]||COLORS.at(-1);
+    const on=projActive.has(i);
+    return`<div class="ctog ${on?"":" off"}" id="ptog-${i}"
+              style="color:${col};border-color:${col};background:${on?col+"22":"transparent"}"
+              onclick="toggleProjCand(${i},'${col}')">
+            ${c.nombre}
+           </div>`;
+  }).join("");
+  container._sorted=sorted;
 }
-function setAlert(type, html) {
-  const el = document.getElementById("alertBox");
-  if (!type) { el.innerHTML=""; return; }
-  el.innerHTML = `<div class="alert ${type}">${html}</div>`;
-}
-window.showSec = (id,btn) => {
-  document.querySelectorAll(".sec").forEach(s=>s.classList.remove("active"));
-  document.querySelectorAll(".tabs .tab").forEach(b=>b.classList.remove("active"));
-  document.getElementById("sec-"+id).classList.add("active");
-  btn.classList.add("active");
-  
-  if (id==="evolucion") {
-      renderEvo();
-      renderEvoHeatmap();
-  }
-  if (id==="regiones")  renderMapAndRegions();
+
+window.toggleProjCand=function(i,col){
+  if(projActive.has(i))projActive.delete(i);
+  else projActive.add(i);
+  const el=document.getElementById(`ptog-${i}`);
+  const on=projActive.has(i);
+  el.classList.toggle("off",!on);
+  el.style.background=on?col+"22":"transparent";
+  buildProjTable();
 };
 
-setAlert("info","⏳ Conectando al servidor...");
-// La primera carga se hace en el primer medio segundo
-setTimeout(()=>silentPoll(), 500);
-// El reloj interno de la web ahora pregunta al servidor de Render cada 10 segundos
-setInterval(()=>silentPoll(), 10000);
+function renderProyeccion(){
+  initProjToggles();
+  buildProjTable();
+}
+
+function buildProjTable(){
+  const regs=DATA.regiones||[];
+  if(!regs.length){
+    document.getElementById("projBody").innerHTML=
+      `<tr><td colspan="20" style="color:var(--faint);padding:1rem;text-align:center">
+        Sin datos regionales disponibles. Pulsa ↻ Actualizar.
+      </td></tr>`;
+    return;
+  }
+  const container=document.getElementById("candToggles");
+  const sorted=container._sorted||[];
+  const activeCands=sorted.filter((_,i)=>projActive.has(i));
+  if(!activeCands.length)return;
+
+  // Header
+  const headCols=activeCands.map(c=>`<th class="num">${c.nombre}<br><span style="font-weight:400;font-size:9px">${c.partido.split(" ").slice(0,2).join(" ")}</span></th>`).join("");
+  document.getElementById("projHead").innerHTML=`<tr>
+    <th>Región</th>
+    <th class="num">Actas %</th>
+    <th class="num">Votos cont.</th>
+    <th class="num">V. faltantes</th>
+    ${headCols.replace(/<th/g,'<th').replace(/<\/th>/g,'<br><span style="font-size:9px;font-weight:400;color:var(--faint)">actual</span></th>')}
+    ${activeCands.map(c=>`<th class="num">${c.nombre}<br><span style="font-size:9px;font-weight:400">proyect.</span></th>`).join("")}
+  </tr>`;
+
+  // Acumuladores nacionales
+  const natActual={}, natProyect={};
+  activeCands.forEach(c=>{natActual[c.nombre]=0; natProyect[c.nombre]=0;});
+  let totalVotosContNac=0, totalVotosFaltNac=0, regsConDatos=0;
+
+  const rows=regs.map(r=>{
+    const pctAc=+r.pctActas||0;
+    // Votos total de la región = suma de todos los candidatos (válidos)
+    const totalVotos=r.candidatos?.reduce((s,c)=>s+c.votos,0)||0;
+    // Votos contabilizados estimados = totalVotos (ya son los contabilizados)
+    const votosCont=totalVotos;
+    // Votos faltantes: si pctActas > 0, proyectar al 100%
+    const votosFaltantes=pctAc>0&&pctAc<100 ? Math.round(votosCont*(100-pctAc)/pctAc) : 0;
+
+    totalVotosContNac+=votosCont;
+    totalVotosFaltNac+=votosFaltantes;
+    if(pctAc>0)regsConDatos++;
+
+    const colsActual=activeCands.map(cand=>{
+      const cr=r.candidatos?.find(x=>x.nombre===cand.nombre);
+      const v=cr?.votos||0, p=cr?.pct||0;
+      natActual[cand.nombre]+=(v||0);
+      return`<td class="num">
+        ${v>0?v.toLocaleString("es-PE"):"–"}
+        ${p>0?`<span class="pct-badge" style="background:${(COLORS[sorted.findIndex(x=>x.nombre===cand.nombre)]||COLORS.at(-1))}22;color:${COLORS[sorted.findIndex(x=>x.nombre===cand.nombre)]||COLORS.at(-1)}">${p.toFixed(1)}%</span>`:""}
+      </td>`;
+    }).join("");
+
+    const colsProyect=activeCands.map(cand=>{
+      const cr=r.candidatos?.find(x=>x.nombre===cand.nombre);
+      const pct=(cr?.pct||0)/100;
+      const votosExtra=Math.round(votosFaltantes*pct);
+      const totalProy=(cr?.votos||0)+votosExtra;
+      natProyect[cand.nombre]+=(totalProy||0);
+      return`<td class="num" style="font-weight:600">
+        ${pctAc>0&&pctAc<100?totalProy.toLocaleString("es-PE"):"–"}
+      </td>`;
+    }).join("");
+
+    return`<tr>
+      <td class="reg-col">${r.nombre}</td>
+      <td class="num">${pctAc>0?pctAc.toFixed(1)+"%":"–"}</td>
+      <td class="num">${votosCont>0?votosCont.toLocaleString("es-PE"):"–"}</td>
+      <td class="num" style="color:var(--amber)">${votosFaltantes>0?votosFaltantes.toLocaleString("es-PE"):"–"}</td>
+      ${colsActual}${colsProyect}
+    </tr>`;
+  }).join("");
+
+  document.getElementById("projBody").innerHTML=rows;
+
+  // Proyección nacional
+  const natCards=activeCands.map((cand,i)=>{
+    const col=COLORS[sorted.findIndex(x=>x.nombre===cand.nombre)]||COLORS.at(-1);
+    const actual=natActual[cand.nombre]||0;
+    const proy=natProyect[cand.nombre]||0;
+    const pctActual=totalVotosContNac>0?((actual/totalVotosContNac)*100).toFixed(2)+"%":"–";
+    const pctProy=proy>0&&(totalVotosContNac+totalVotosFaltNac)>0
+      ?((proy/(totalVotosContNac+totalVotosFaltNac))*100).toFixed(2)+"%" : "–";
+    return`<div class="proj-nat-card" style="border-top:3px solid ${col}">
+      <div class="proj-nat-name" style="color:${col}">${cand.nombre}</div>
+      <div class="proj-nat-party">${cand.partido}</div>
+      <div class="proj-nat-row">
+        <span class="proj-nat-label">Votos actuales</span>
+        <span class="proj-nat-val">${actual>0?actual.toLocaleString("es-PE"):"–"} <small style="color:var(--faint)">(${pctActual})</small></span>
+      </div>
+      <div class="proj-nat-row">
+        <span class="proj-nat-label">Proyectado 100%</span>
+        <span class="proj-nat-val" style="color:${col}">${proy>0?proy.toLocaleString("es-PE"):"–"} <small style="color:var(--faint)">(${pctProy})</small></span>
+      </div>
+    </div>`;
+  }).join("");
+  document.getElementById("projNatGrid").innerHTML=natCards;
+  document.getElementById("projNatCoverage").textContent=
+    `(${regsConDatos}/${regs.length} regiones con datos)`;
+}
+
+// ── Helpers ─────────────────────────────────────────────────
+function setPill(f){
+  const el=document.getElementById("sourcePill");
+  if(f==="api_onpe"){el.className="pill p-live";el.textContent="🟢 ONPE en vivo";}
+  else if(f==="api_onpe_parcial"){el.className="pill p-partial";el.textContent="🟡 ONPE parcial";}
+  else{el.className="pill p-fallback";el.textContent="🔴 datos locales";}
+}
+function setAlert(type,html){
+  const el=document.getElementById("alertBox");
+  if(!type){el.innerHTML="";return;}
+  el.innerHTML=`<div class="alert a-${type}">${html}</div>`;
+}
+window.showSec=(id,btn)=>{
+  document.querySelectorAll(".sec").forEach(s=>s.classList.remove("active"));
+  document.querySelectorAll(".tabs .tab").forEach(b=>b.classList.remove("active"));
+  document.getElementById("sec-"+id).classList.add("active"); btn.classList.add("active");
+  if(id==="evolucion")renderEvo();
+  if(id==="regiones")renderRegiones();
+  if(id==="proyeccion")renderProyeccion();
+};
+window.toggleReg=i=>{selReg=selReg===i?null:i;renderRegiones();};
+
+// ── Init ────────────────────────────────────────────────────
+setAlert("info","⏳ Conectando… <code>python3 onpe_proxy.py</code> → <strong>↻ Actualizar</strong>");
+setTimeout(()=>silentPoll(),600);
+setInterval(()=>silentPoll(),60000);
 </script>
 </body>
 </html>
