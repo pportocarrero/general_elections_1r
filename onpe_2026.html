@@ -349,13 +349,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       </div>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1.5rem;line-height:1.7">
-      Define para cada candidato qué porcentaje de los <strong>votos faltantes</strong> captará,
-      en relación a su share actual en esa región.<br>
-      <strong>0%</strong> = proyección lineal pura (tendencia actual). 
-      <strong>+100%</strong> = duplica su captura de votos faltantes.
-      <strong>–50%</strong> = captará la mitad de lo que indica su tendencia actual.<br>
-      El botón <em>🔥 Usar última tasa log.</em> pre-carga el retorno logarítmico 
-      <code>ln(Vt / Vt-1) × 100</code> del último corte disponible en el Mapa de Calor.
+      Define para cada candidato qué % de los <strong>votos faltantes</strong> captará, relativo a su share actual en esa región.<br><strong>0%</strong> = lineal (tendencia pura). <strong>+100%</strong> = doble captura. <strong>–50%</strong> = mitad.<br>El botón <em>🔥 Usar última tasa log.</em> pre-carga el retorno logarítmico <code>ln(Vt/Vt-1)×100</code> del último corte del Mapa de Calor.
     </p>
     
     <div class="sim-grid" id="simControls"></div>
@@ -1023,14 +1017,13 @@ function calculateProjectionData(simMultipliers = null) {
         const pctAc = aT > 0 ? (aC / aT * 100) : (+r.pctActas || 0);
         let vValidos = +(r.vValidos || 0);
 
-        // Anti-fuga frontend: si vValidos es nacional (>5M) para región no-Lima Metro,
-        // usar la suma de votos de candidatos como aproximación
+        // Anti-fuga: si vValidos > 5M y no es Lima Metropolitana, usar suma de candidatos
         const sumVotosCands = (r.candidatos||[]).reduce((s,c) => s + (+c.votos||0), 0);
         const isLimaMetro = r.nombre.toLowerCase().includes("lima metro");
         if (vValidos > 5_000_000 && !isLimaMetro) vValidos = sumVotosCands;
         if (vValidos === 0 && sumVotosCands > 0) vValidos = sumVotosCands;
-        
-        // Votos faltantes: desde % de avance de actas
+
+        // Votos faltantes: desde % de avance de actas (más robusto que actasCont/aT)
         let vFalt = (pctAc > 0 && pctAc < 99.9) ? Math.round(vValidos * (100 - pctAc) / pctAc) : 0;
         vFalt = Math.max(0, vFalt);
 
@@ -1204,13 +1197,10 @@ window.exportTableToCSV = (filename) => {
 
 // ══════════════════════════════════════════════════════════
 //  SIMULACIÓN DINÁMICA CON TASAS LOGARÍTMICAS
-//  Los sliders controlan el % de captura de votos faltantes
-//  relativo al share actual del candidato. El botón 🔥 pre-carga
-//  el retorno logarítmico ln(Vt/Vt-1)×100 del último corte del EVO.
 // ══════════════════════════════════════════════════════════
 
 function _calcHeatmapRates() {
-    // Retorno logarítmico del último corte: ln(Vt / Vt-1) × 100
+    // ln(Vt / Vt-1) × 100 para el último corte de cada candidato
     const n = EVO.labels.length;
     const rates = {};
     TOP6.forEach(c => {
@@ -1271,19 +1261,18 @@ window.updateSimVal = (match, val) => {
 };
 
 window.applyHeatmapToSim = () => {
-    // Pre-carga ln(Vt/Vt-1)×100 del último corte del Mapa de Calor
     const heatRates = _calcHeatmapRates();
     TOP6.forEach(c => {
         const rate = Math.max(-50, Math.min(200, heatRates[c.match] || 0));
-        const sliderEl = document.getElementById(`slider-${c.match}`);
-        if (sliderEl) sliderEl.value = rate.toFixed(1);
+        const sl = document.getElementById(`slider-${c.match}`);
+        if (sl) sl.value = rate.toFixed(1);
         updateSimVal(c.match, rate);
     });
 };
 
 window.resetSim = () => {
     TOP6.forEach(c => { simMultipliers[c.match] = 0; });
-    renderSimulacion(); // re-renders sliders at 0
+    renderSimulacion();
 };
 
 function _drawSimChart() {

@@ -136,92 +136,129 @@ def parse_candidatos(raw):
     candidatos.sort(key=lambda x: -x["pct"])
     return candidatos, votos_blancos, votos_nulos
 
-# Límites máximos de votos válidos por ubigeo (padrón ~2026)
-# Usados para detectar fugas (ONPE devuelve datos nacionales en vez de regionales)
-MAX_VOTOS_VALIDOS = {
-    "150100": 4_500_000,  # Lima Metropolitana
-    "150000": 1_200_000,  # Lima Provincias
-    "200000":   900_000,  # Piura
-    "130000":   800_000,  # La Libertad
-    "060000":   750_000,  # Cajamarca
-    "120000":   700_000,  # Junín
-    "040000":   650_000,  # Arequipa
-    "210000":   600_000,  # Puno
-    "140000":   550_000,  # Lambayeque
-    "080000":   550_000,  # Cusco
-    "100000":   450_000,  # Huánuco
-    "220000":   400_000,  # San Martín
-    "020000":   380_000,  # Áncash
-    "160000":   350_000,  # Loreto
-    "070000":   300_000,  # Callao (propio)
-    "050000":   250_000,  # Ayacucho
-    "110000":   250_000,  # Ica
-    "010000":   200_000,  # Amazonas
-    "030000":   200_000,  # Apurímac
-    "090000":   180_000,  # Huancavelica
-    "250000":   180_000,  # Ucayali
-    "190000":   120_000,  # Pasco
-    "180000":   100_000,  # Moquegua
-    "230000":   100_000,  # Tacna
-    "240000":    80_000,  # Tumbes
-    "170000":    80_000,  # Madre de Dios
-    "900000":   200_000,  # Extranjero
+# ── Límites de votos válidos por ubigeo ─────────────────────────
+# Para detectar fugas (ONPE devuelve totales nacionales por error)
+MAX_VOTOS = {
+    "150100": 5_000_000,  # Lima Metropolitana
+    "150000": 1_300_000,  # Lima Provincias
+    "200000":   950_000,  # Piura
+    "130000":   850_000,  # La Libertad
+    "060000":   800_000,  # Cajamarca
+    "120000":   750_000,  # Junín
+    "040000":   700_000,  # Arequipa
+    "210000":   650_000,  # Puno
+    "140000":   600_000,  # Lambayeque
+    "080000":   600_000,  # Cusco
+    "100000":   500_000,  # Huánuco
+    "220000":   450_000,  # San Martín
+    "020000":   420_000,  # Áncash
+    "160000":   400_000,  # Loreto
+    "070000":   350_000,  # Callao
+    "050000":   300_000,  # Ayacucho
+    "110000":   300_000,  # Ica
+    "010000":   230_000,  # Amazonas
+    "030000":   230_000,  # Apurímac
+    "090000":   210_000,  # Huancavelica
+    "250000":   210_000,  # Ucayali
+    "190000":   140_000,  # Pasco
+    "180000":   115_000,  # Moquegua
+    "230000":   115_000,  # Tacna
+    "240000":    95_000,  # Tumbes
+    "170000":    95_000,  # Madre de Dios
+    "900000":   250_000,  # Extranjero
 }
+
+def _build_region_urls(ubigeo):
+    """
+    Genera todas las variantes de URL para una jurisdicción.
+    Orden: de más específica a más genérica.
+    La ONPE no es consistente — distintas regiones responden a distintos patrones.
+    """
+    variants = []
+    cod_int = str(int(ubigeo))   # "040000" -> "40000", "150100" -> "150100"
+    
+    # Determinar ámbito: 1=nacional, 2=extranjero, 3=Lima Metro (a veces)
+    if ubigeo == "900000":
+        ambitos = ["2", "1"]
+    elif ubigeo == "150100":
+        ambitos = ["1", "3"]
+    else:
+        ambitos = ["1"]
+    
+    # Códigos a probar: int sin ceros y con ceros
+    cods = [cod_int] if cod_int == ubigeo else [cod_int, ubigeo]
+    
+    for ambito in ambitos:
+        for cod in cods:
+            # Variante 1: ubigeoNivel1 (la que usa la web de ONPE)
+            variants.append((
+                f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre"
+                f"?idEleccion=10&tipoFiltro=ubigeo_nivel_01"
+                f"&idAmbitoGeografico={ambito}&ubigeoNivel1={cod}",
+                f"{BASE}/resumen-general/totales"
+                f"?idEleccion=10&tipoFiltro=ubigeo_nivel_01"
+                f"&idAmbitoGeografico={ambito}&idUbigeoDepartamento={cod}"
+            ))
+            # Variante 2: tipoFiltro=departamento
+            variants.append((
+                f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre"
+                f"?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={cod}",
+                f"{BASE}/resumen-general/totales"
+                f"?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={cod}"
+            ))
+    
+    return variants
+
 
 def fetch_region_worker(ubigeo, nombre):
     """
-    Descarga datos de una jurisdicción.
-    Aplica anti-fuga: si los votos válidos superan el máximo esperable
-    para ese departamento, la ONPE devolvió datos nacionales por error.
+    Prueba todas las variantes de URL para la jurisdicción.
+    Aplica validación anti-fuga antes de aceptar los datos.
     """
-    ambito = "2" if ubigeo == "900000" else "1"
+    max_v = MAX_VOTOS.get(ubigeo, 700_000)
+    variants = _build_region_urls(ubigeo)
     
-    url_part = (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre"
-                f"?idEleccion=10&tipoFiltro=ubigeo_nivel_01"
-                f"&idAmbitoGeografico={ambito}&ubigeoNivel1={ubigeo}")
-    url_tot  = (f"{BASE}/resumen-general/totales"
-                f"?idEleccion=10&tipoFiltro=ubigeo_nivel_01"
-                f"&idAmbitoGeografico={ambito}&idUbigeoDepartamento={ubigeo}")
+    for url_part, url_tot in variants:
+        raw_part = _get_json(url_part)
+        raw_tot  = _get_json(url_tot)
 
-    raw_part = _get_json(url_part)
-    raw_tot  = _get_json(url_tot)
+        cands, _, _ = parse_candidatos(raw_part)
+        avance      = parse_avance(raw_tot)
 
-    cands, _, _ = parse_candidatos(raw_part)
-    avance = parse_avance(raw_tot)
+        if not cands:
+            continue
 
-    if not cands: return None
+        # Anti-fuga: votos totales no pueden exceder el máximo de la jurisdicción
+        total_votos = sum(c["votos"] for c in cands)
+        if total_votos > max_v:
+            print(f"    ⚠ FUGA {nombre}: {total_votos:,} > máx {max_v:,} ({url_part[-60:]})")
+            continue
 
-    # ── ANTI-FUGA ──────────────────────────────────────────────
-    # Verificar que los votos totales sean razonables para este dpto.
-    total_votos = sum(c["votos"] for c in cands)
-    max_esperado = MAX_VOTOS_VALIDOS.get(ubigeo, 700_000)
-    if total_votos > max_esperado:
-        print(f"    ⚠ FUGA {nombre}: {total_votos:,} votos > máx {max_esperado:,} — descartado")
-        return None
+        # Calcular pctActas si no vino directo
+        aC = avance.get("actasContabilizadas", 0)
+        aT = avance.get("actasTotales", 0)
+        pctAc = avance.get("pctActas", 0)
+        if pctAc == 0 and aT > 0 and aC > 0:
+            pctAc = round((aC / aT) * 100, 3)
 
-    # También validar con los votos válidos del endpoint de totales
-    vv = avance.get("votosValidos", 0)
-    if vv > max_esperado * 1.1:  # 10% de margen
-        print(f"    ⚠ FUGA vValidos {nombre}: {vv:,} > máx {max_esperado:,} — descartado")
-        return None
+        vv = avance.get("votosValidos", 0)
+        if vv == 0 or vv > max_v:
+            vv = total_votos  # fallback a suma de candidatos
 
-    # ── Calcular pctActas desde actasCont/actasTot si no vino directo ──
-    actasCont = avance.get("actasContabilizadas", 0)
-    actasTot  = avance.get("actasTotales", 0)
-    pctActas  = avance.get("pctActas", 0)
-    if pctActas == 0 and actasTot > 0 and actasCont > 0:
-        pctActas = round((actasCont / actasTot) * 100, 3)
+        print(f"    ✓ {nombre}: {total_votos:,} votos, {pctAc:.1f}% actas")
+        return {
+            "nombre":    nombre.title(),
+            "pctActas":  pctAc,
+            "actasCont": aC,
+            "actasTot":  aT,
+            "vValidos":  vv,
+            "lider":     cands[0]["nombre"],
+            "pctLider":  cands[0]["pct"],
+            "candidatos": cands,
+        }
 
-    return {
-        "nombre":    nombre.title(),
-        "pctActas":  pctActas,
-        "actasCont": actasCont,
-        "actasTot":  actasTot,
-        "vValidos":  vv if vv > 0 else total_votos,
-        "lider":     cands[0]["nombre"],
-        "pctLider":  cands[0]["pct"],
-        "candidatos": cands,
-    }
+    print(f"    ✗ {nombre} ({ubigeo}): todas las variantes fallaron")
+    return None
 
 def fetch_onpe():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")
@@ -246,7 +283,7 @@ def fetch_onpe():
     print(f"  ✓ Descargando {len(UBIGEOS)} jurisdicciones (Rutas limpias)...")
     regiones = []
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         future_to_region = {executor.submit(fetch_region_worker, u, n): n for u, n in UBIGEOS.items()}
         for future in concurrent.futures.as_completed(future_to_region):
             res = future.result()
@@ -344,6 +381,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except Exception as e:
                 self.send_response(500); self._cors(); self.end_headers()
                 
+        elif path == "/api/debug-regiones":
+            # Diagnóstico: muestra estado de cada jurisdicción en el caché
+            with _lock: data = dict(_cache)
+            regs = data.get("regiones", [])
+            found = {r["nombre"] for r in regs}
+            missing = {n for n in UBIGEOS.values() if n.title() not in found}
+            self._json({
+                "total_ubigeos": len(UBIGEOS),
+                "regiones_en_cache": len(regs),
+                "nombres_en_cache": sorted(found),
+                "faltantes": sorted(missing),
+                "detalle": [{
+                    "nombre": r["nombre"],
+                    "pctActas": r.get("pctActas", 0),
+                    "actasCont": r.get("actasCont", 0),
+                    "actasTot": r.get("actasTot", 0),
+                    "vValidos": r.get("vValidos", 0),
+                    "nCandidatos": len(r.get("candidatos", [])),
+                    "lider": r.get("lider", "–"),
+                } for r in regs]
+            })
+
         elif path in ("/", "/index.html"):
             if os.path.exists(HTML_FILE):
                 with open(HTML_FILE, "rb") as f: content = f.read()
