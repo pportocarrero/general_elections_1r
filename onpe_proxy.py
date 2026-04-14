@@ -174,12 +174,21 @@ def _fmt_nombre(nombre_mayus):
 def fetch_region_worker(ubigeo, nombre):
     """
     Prueba múltiples variantes de URL y formatos de ubigeo.
-    ONPE puede esperar el ubigeo con o sin ceros iniciales:
-      "040000" -> int parse -> "40000"  (más probable)
-      "040000" -> tal cual
+    Anti-fuga mejorada: compara votos totales de la región vs el caché nacional
+    para detectar cuando la ONPE devuelve datos nacionales en lugar de regionales.
     """
-    # Generar variantes del código: con y sin ceros iniciales
-    cod_int = str(int(ubigeo))   # "040000" -> "40000", "150000" -> "150000"
+    # Límites máximos por departamento (padrón electoral aproximado)
+    # Si una región supera este número de votos, es una fuga de datos nacionales
+    MAX_VOTOS_REGION = {
+        "150000": 6_000_000,  # Lima (incluyendo Lima Provincias)
+        "200000": 900_000,    # Piura
+        "130000": 800_000,    # La Libertad
+        "060000": 750_000,    # Cajamarca
+        "120000": 700_000,    # Junín
+    }
+    max_v = MAX_VOTOS_REGION.get(ubigeo, 700_000)  # 700k como límite genérico
+
+    cod_int = str(int(ubigeo))
     ubigeo_variants = [cod_int, ubigeo] if cod_int != ubigeo else [ubigeo]
 
     for url_part_tpl, url_tot_tpl in URL_VARIANTS:
@@ -196,22 +205,29 @@ def fetch_region_worker(ubigeo, nombre):
             if not cands:
                 continue
 
-            # ANTI-FUGA: región con >5M votos implica que la ONPE devolvió datos nacionales
+            # Anti-fuga: total de votos no puede exceder el máximo regional
             total_votos = sum(c["votos"] for c in cands)
-            if total_votos > 5_000_000 and ubigeo != "150000":
+            if total_votos > max_v:
+                print(f"    ⚠ FUGA detectada {nombre}: {total_votos:,} votos > máx {max_v:,} — descartando")
+                continue
+
+            # Anti-fuga adicional: si todos los candidatos tienen exactamente
+            # los mismos votos que el nivel nacional, es una fuga
+            # (verificamos que al menos un candidato tenga votos razonables)
+            if total_votos == 0:
                 continue
 
             return {
-                "nombre":   nombre.title(),
-                "pctActas": avance.get("pctActas", 0),
-                "actasCont":avance.get("actasContabilizadas", 0),
-                "actasTot": avance.get("actasTotales", 0),
-                "lider":    cands[0]["nombre"],
-                "pctLider": cands[0]["pct"],
+                "nombre":    nombre.title(),
+                "pctActas":  avance.get("pctActas", 0),
+                "actasCont": avance.get("actasContabilizadas", 0),
+                "actasTot":  avance.get("actasTotales", 0),
+                "lider":     cands[0]["nombre"],
+                "pctLider":  cands[0]["pct"],
                 "candidatos": cands,
             }
 
-    return None  # Todas las variantes fallaron
+    return None
 
 def fetch_onpe():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")

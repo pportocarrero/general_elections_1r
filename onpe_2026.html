@@ -492,19 +492,45 @@ async function silentPoll() {
   } catch(e) {}
 }
 
+// Normaliza tildes y caracteres especiales para comparaciones robustas
+function _norm(s) {
+  return (s||"").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g,"")
+    .replace(/[^a-z0-9]/g," ").trim();
+}
+
+// Busca un candidato en la lista por coincidencia de apellido normalizado
+function _findCand(lista, clave) {
+  const keyNorm = _norm(clave.split(" ").at(-1));  // último token = apellido
+  return lista.find(x => _norm(x.nombre).includes(keyNorm));
+}
+
 function addEvoPoint(d) {
   const pct = +d.pctActas;
+  if (!pct) return;
+
   const lastLabel = EVO.labels[EVO.labels.length - 1];
-  if (!pct || pct <= +lastLabel.replace('%','') + 0.001) return;
-  EVO.labels.push(pct.toFixed(3)+"%");
-  EVO.top7.forEach((cm) => {
-    // Buscar por apellido/nombre en los candidatos de la ONPE
-    const c = (d.candidatos || []).find(x =>
-      x.nombre.toLowerCase().includes(cm.n.toLowerCase().split(" ").at(-1))
-    );
-    cm.d.push(c ? +c.pct   : (cm.d.at(-1)||0));
-    cm.v.push(c ? +c.votos : (cm.v.at(-1)||0));
-  });
+  const lastPct   = +lastLabel.replace('%','');
+
+  if (pct > lastPct + 0.001) {
+    // Nuevo corte: añadir punto
+    EVO.labels.push(pct.toFixed(3)+"%");
+    EVO.top7.forEach(cm => {
+      const c = _findCand(d.candidatos||[], cm.n);
+      cm.d.push(c ? +c.pct   : (cm.d.at(-1)||0));
+      cm.v.push(c ? +c.votos : (cm.v.at(-1)||0));
+    });
+  } else if (Math.abs(pct - lastPct) <= 0.001) {
+    // Mismo corte: ACTUALIZAR el último punto con datos más frescos
+    // Esto corrige el caso de Sánchez y otros que no se actualizaban
+    EVO.top7.forEach(cm => {
+      const c = _findCand(d.candidatos||[], cm.n);
+      if (c) {
+        cm.d[cm.d.length - 1] = +c.pct;
+        cm.v[cm.v.length - 1] = +c.votos;
+      }
+    });
+  }
 }
 
 function render() {
@@ -517,7 +543,8 @@ function render() {
       renderEvo();
       renderEvoHeatmap();
   }
-  if (document.getElementById("sec-regiones").classList.contains("active"))  renderMapAndRegions();
+  if (document.getElementById("sec-regiones").classList.contains("active"))   renderMapAndRegions();
+  if (document.getElementById("sec-proyeccion").classList.contains("active"))  renderProyeccion();
   setPill(DATA.fuente);
 }
 
@@ -1123,7 +1150,7 @@ function renderProyeccion() {
     if (pctAc > 0) regsConDatos++;
 
     const tdActual = activeCands.map(cand => {
-      const cr = (r.candidatos||[]).find(x => x.nombre.toLowerCase().includes(cand.clave.toLowerCase().split(" ").at(-1)));
+      const cr = _findCand(r.candidatos||[], cand.clave);
       const v = +(cr?.votos||0), p = +(cr?.pct||0);
       natActual[cand.clave] += v;
       return `<td class="proj-td">
@@ -1133,7 +1160,7 @@ function renderProyeccion() {
     }).join("");
 
     const tdProy = activeCands.map(cand => {
-      const cr = (r.candidatos||[]).find(x => x.nombre.toLowerCase().includes(cand.clave.toLowerCase().split(" ").at(-1)));
+      const cr = _findCand(r.candidatos||[], cand.clave);
       const pct = +(cr?.pct||0) / 100;
       const vExtra = Math.round(vFalt * pct);
       const total  = +(cr?.votos||0) + vExtra;
@@ -1158,20 +1185,26 @@ function renderProyeccion() {
 
   // ── Proyección nacional ──
   const totalFinal = totalContNac + totalFaltNac;
+  // Votos nacionales reales (fuente más confiable: DATA.candidatos directo de ONPE)
   const natCards = activeCands.map(c => {
-    const actual = natActual[c.clave]||0;
-    const proy   = natProy[c.clave]||0;
-    const pctA   = totalContNac>0 ? ((actual/totalContNac)*100).toFixed(2)+"%" : "–";
-    const pctP   = totalFinal>0   ? ((proy/totalFinal)*100).toFixed(2)+"%" : "–";
+    // Preferir datos nacionales directos sobre suma de regiones
+    const natReal = _findCand(DATA.candidatos||[], c.clave);
+    const actual  = natReal ? +natReal.votos : (natActual[c.clave]||0);
+    const pctReal = natReal ? +natReal.pct   : 0;
+    const proy    = natProy[c.clave]||0;
+    const totalVV = +DATA.votosValidos||0;
+    const pctA    = pctReal>0 ? pctReal.toFixed(3)+"% s/válidos" :
+                    (totalContNac>0 ? ((actual/totalContNac)*100).toFixed(2)+"%" : "–");
+    const pctP    = totalFinal>0 ? ((proy/totalFinal)*100).toFixed(2)+"%" : "–";
     return `<div class="proj-nat-card" style="border-top-color:${c.color}">
       <div class="proj-nat-lbl">${c.nombre}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${c.partido}</div>
-      <div class="proj-nat-lbl">Votos actuales</div>
+      <div class="proj-nat-lbl">Votos nacionales actuales</div>
       <div class="proj-nat-val">${actual>0?actual.toLocaleString("es-PE"):"–"}</div>
-      <div class="proj-nat-sub">${pctA} de votos contab.</div>
-      <div class="proj-nat-lbl" style="margin-top:8px">Proyectado 100%</div>
+      <div class="proj-nat-sub">${pctA}</div>
+      <div class="proj-nat-lbl" style="margin-top:8px">Proyectado al 100% actas</div>
       <div class="proj-nat-val" style="color:${c.color}">${proy>0?proy.toLocaleString("es-PE"):"–"}</div>
-      <div class="proj-nat-sub">${pctP} del total est.</div>
+      <div class="proj-nat-sub">${pctP} del total proyectado</div>
     </div>`;
   }).join("");
 
