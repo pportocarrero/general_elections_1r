@@ -287,7 +287,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
   </div>
 
   <div class="panel full" style="margin-bottom:1rem">
-    <div class="ptitle">Evolución top 6 candidatos — Votos Emitidos (Barras)</div>
+    <div class="ptitle">Evolución top 6 candidatos — Votos Emitidos (Barras dinámicas)</div>
     <div class="chart-box" style="height:350px">
       <canvas id="evoVotesC" role="img"></canvas>
     </div>
@@ -472,7 +472,6 @@ function renderStats() {
     "Corte: " + new Date(ts).toLocaleString("es-PE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});
 }
 
-// ── LÓGICA DE AGRUPACIÓN (Candidatos > 1% + Otros) ──
 function processCandidatos(dataCands) {
   if (!dataCands || !dataCands.length) return [];
   let mainCands = [];
@@ -548,7 +547,7 @@ function renderResumen() {
     {l:"Contabilizadas",   v: (+d.actasContabilizadas||0).toLocaleString("es-PE"), s:(+d.pctActas||0).toFixed(3)+"%"},
     {l:"Pendientes",       v: (+d.actasPendientes||0).toLocaleString("es-PE"), s:"sin procesar"},
     {l:"Enviadas al JEE",  v: (+d.actasJEE||0).toLocaleString("es-PE"), s:"observadas"},
-    {l:"Votos emitidos",   v: ve>0?ve.toLocaleString("es-PE"):"–", s:d.participacion>0?(+d.participacion).toFixed(2)+"% participación":""},
+    {l:"Votos emitidos",   v: ve>0?ve.toLocaleString("es-PE"):"–", s:d.participacion>0?(+d.participacion).toFixed(2)+"% participation":""},
     {l:"Votos válidos",    v: vv>0?vv.toLocaleString("es-PE"):"–", s:ve>0&&vv>0?((vv/ve)*100).toFixed(2)+"% s/emitidos":""},
     {l:"Votos en blanco",  v: vb>0?vb.toLocaleString("es-PE"):"–", s:pctB},
     {l:"Votos nulos",      v: vn>0?vn.toLocaleString("es-PE"):"–", s:pctN},
@@ -593,7 +592,8 @@ function renderEvo() {
   const ttb=isDark?"#2a2a2e":"#fff";
   const ttd=isDark?"#444":"#ddd";
 
-  // Mostrar Top 6 candidatos en los gráficos (índices 0 al 5)
+  const labels = EVO.labels;
+  // Solo top 6
   const plotCands = EVO.top7.slice(0, 6);
 
   document.getElementById("evoLeg").innerHTML = plotCands.map(m=>
@@ -605,15 +605,16 @@ function renderEvo() {
 
   document.getElementById("evoNota").innerHTML =
     `Cómputo oficial ONPE. Los primeros puntos tienen sesgo urbano (Lima + exterior), que infló a López Aliaga. ` +
-    `Cada actualización agrega automáticamente un nuevo punto al gráfico.`;
+    `Cada actualización agrega automáticamente un nuevo punto al gráfico. Las barras se reordenan en tiempo real.`;
 
   const dashes=[[],[],[6,3],[3,3],[8,4],[4,4],[2,3]];
 
+  // 1. Gráfico de Líneas (Porcentajes)
   if (evoChart) evoChart.destroy();
   evoChart = new Chart(document.getElementById("evoC"),{
     type:"line",
     data:{
-      labels: EVO.labels,
+      labels: labels,
       datasets: plotCands.map((m,i)=>({
         label:m.n, data:m.d,
         borderColor:m.c, backgroundColor:m.c+"15",
@@ -632,7 +633,7 @@ function renderEvo() {
           backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
           titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
           titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
-          itemSort: (a, b) => b.parsed.y - a.parsed.y, // <-- SORT HOVER TOOLTIP DESCENDING
+          itemSort: (a, b) => b.parsed.y - a.parsed.y, // <-- Ordena el tooltip de mayor a menor
           callbacks:{
             title:i=>`Actas contabilizadas: ${i[0].label}`,
             label:i=>` ${i.dataset.label}: ${i.parsed.y.toFixed(3)}%`
@@ -646,17 +647,43 @@ function renderEvo() {
     }
   });
 
+  // 2. Gráfico de Barras Dinámico (Reordenamiento por Puesto)
   if (evoVotesChart) evoVotesChart.destroy();
+  
+  // Creamos 6 datasets vacíos (Puesto 1 al Puesto 6)
+  const rankDatasets = Array.from({length: 6}, (_, rankIndex) => ({
+      label: `Puesto ${rankIndex + 1}`,
+      data: [],
+      backgroundColor: [],
+      candNames: [],
+      borderRadius: 4,
+      borderWidth: 0
+  }));
+
+  // Llenamos los datasets recorriendo cada punto de tiempo
+  for (let i = 0; i < labels.length; i++) {
+      // Obtenemos los candidatos en este instante y los ordenamos de mayor a menor
+      const candsAtTime = plotCands.map(c => ({ n: c.n, v: c.v[i], c: c.c }));
+      candsAtTime.sort((a, b) => b.v - a.v);
+      
+      for (let rank = 0; rank < 6; rank++) {
+          if (candsAtTime[rank]) {
+              rankDatasets[rank].data.push(candsAtTime[rank].v);
+              rankDatasets[rank].backgroundColor.push(candsAtTime[rank].c);
+              rankDatasets[rank].candNames.push(candsAtTime[rank].n);
+          } else {
+              rankDatasets[rank].data.push(null);
+              rankDatasets[rank].backgroundColor.push("transparent");
+              rankDatasets[rank].candNames.push("");
+          }
+      }
+  }
+
   evoVotesChart = new Chart(document.getElementById("evoVotesC"),{
     type:"bar",
     data:{
-      labels: EVO.labels,
-      datasets: plotCands.map(m=>({
-        label:m.n, data:m.v,
-        backgroundColor:m.c,
-        borderRadius: 4,
-        borderWidth: 0
-      }))
+      labels: labels,
+      datasets: rankDatasets
     },
     options:{
       responsive:true,maintainAspectRatio:false,
@@ -667,10 +694,16 @@ function renderEvo() {
           backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
           titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
           titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
-          itemSort: (a, b) => b.parsed.y - a.parsed.y, // <-- SORT HOVER TOOLTIP DESCENDING
+          // Al usar datasets por puesto, ya vienen ordenados, pero itemSort asegura 100% el visual
+          itemSort: (a, b) => b.parsed.y - a.parsed.y, 
           callbacks:{
             title:i=>`Actas contabilizadas: ${i[0].label}`,
-            label:i=>` ${i.dataset.label}: ${i.parsed.y.toLocaleString("es-PE")} votos`
+            label:i=>{
+                const ds = i.dataset;
+                const idx = i.dataIndex;
+                const candName = ds.candNames[idx];
+                return ` ${candName}: ${i.parsed.y.toLocaleString("es-PE")} votos`;
+            }
           }
         }
       },
@@ -693,10 +726,10 @@ window.toggleHmFilter = (cb) => {
 
 function renderEvoHeatmap() {
   const labels = EVO.labels;
-  const heatmapCandsPool = EVO.top7.slice(0, 6); // Usar los Top 6 para los filtros
+  const heatmapCandsPool = EVO.top7.slice(0, 6); 
   
   if (!hmSelectedCands) {
-      hmSelectedCands = EVO.top7.slice(1, 6).map(c => c.n); // Default: 2do al 6to
+      hmSelectedCands = EVO.top7.slice(1, 6).map(c => c.n); 
   }
 
   let filterHtml = `<div class="hm-filters">
