@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v26 (Filtros Anti-Cruce + Matemática Pura)
-Uso:  python3 onpe_proxy.py
+ONPE 2026 — Proxy Local v26 (Simple, Directo y Sin Filtros Raros)
 """
 
 import http.server, json, threading, time
@@ -11,7 +10,7 @@ from datetime import datetime, timezone
 
 PORT        = int(os.environ.get("PORT", 8765))
 REFRESH_SEC = 25
-CACHE_FILE  = "onpe_cache_v26.json" # Archivo nuevo para limpiar fantasmas
+CACHE_FILE  = "onpe_cache.json"
 HTML_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "onpe_2026.html")
 BASE        = "https://resultadoelectoral.onpe.gob.pe/presentacion-backend"
 
@@ -19,14 +18,13 @@ EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccio
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# 26 Jurisdicciones (Separando Lima Provincias y Extranjero)
+# Los 25 Departamentos consolidados + Extranjero
 UBIGEOS = {
     "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
     "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
     "070000": "Callao", "080000": "Cusco", "090000": "Huancavelica",
     "100000": "Huánuco", "110000": "Ica", "120000": "Junín",
-    "130000": "La Libertad", "140000": "Lambayeque", 
-    "150000": "Lima Provincias", "150100": "Lima Metropolitana", 
+    "130000": "La Libertad", "140000": "Lambayeque", "150000": "Lima",
     "160000": "Loreto", "170000": "Madre de Dios", "180000": "Moquegua",
     "190000": "Pasco", "200000": "Piura", "210000": "Puno",
     "220000": "San Martín", "230000": "Tacna", "240000": "Tumbes",
@@ -34,7 +32,7 @@ UBIGEOS = {
 }
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "es-PE,es;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
@@ -46,8 +44,8 @@ HEADERS = {
 
 FALLBACK = {
     "fuente": "respaldo_local", "timestamp": "2026-04-13T10:00:00",
-    "pctActas": 53.886, "actasContabilizadas": 49988, "actasTotales": 92766,
-    "votosEmitidos": 11488641, "votosValidos": 9847379, "candidatos": [], "regiones": []
+    "pctActas": 0, "actasContabilizadas": 0, "actasTotales": 92766,
+    "votosEmitidos": 0, "votosValidos": 0, "candidatos": [], "regiones": []
 }
 
 _cache = None
@@ -55,11 +53,12 @@ _lock  = threading.Lock()
 _is_refreshing = False
 
 def strip_accents(s):
-    """Permite ordenar alfabéticamente ignorando tildes (Áncash va en la A)"""
     return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
 
 def _get_json(url, retries=1):
-    req = urllib.request.Request(url, headers=HEADERS)
+    sep = "&" if "?" in url else "?"
+    cb_url = f"{url}{sep}_={int(time.time()*1000)}"
+    req = urllib.request.Request(cb_url, headers=HEADERS)
     for attempt in range(retries + 1):
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
@@ -140,43 +139,27 @@ def parse_candidatos(raw):
     return candidatos, votos_blancos, votos_nulos
 
 def fetch_region_worker(ubigeo, nombre):
-    ambito = "2" if ubigeo == "900000" else "1"
-    
-    urls = [
-        (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={ubigeo}",
-         f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={ubigeo}"),
-        (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&ubigeoNivel1={ubigeo}",
-         f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&idUbigeoDepartamento={ubigeo}")
-    ]
+    # Uso de la ruta directa estándar de la ONPE
+    url_part = f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={ubigeo}"
+    url_tot  = f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={ubigeo}"
 
-    for url_part, url_tot in urls:
-        raw_part = _get_json(url_part)
-        raw_tot  = _get_json(url_tot)
+    raw_part = _get_json(url_part)
+    raw_tot  = _get_json(url_tot)
 
-        cands, _, _ = parse_candidatos(raw_part)
-        avance = parse_avance(raw_tot)
+    cands, _, _ = parse_candidatos(raw_part)
+    avance = parse_avance(raw_tot)
 
-        if not cands or not avance: continue
+    if not cands or not avance: return None
         
-        actas_t = avance.get("actasTotales", 0)
-        
-        # === FILTRO ANTI-CRUCE DE DATOS INFALIBLE ===
-        # 1. Si la ONPE responde > 50,000 actas, nos mandó el total nacional por error.
-        if actas_t > 50000: continue
-        # 2. Ninguna región en Perú supera las 10,000 actas, EXCEPTO Lima Met. y Lima Provincias.
-        # Si devuelve > 10,000 y no es Lima, es Lima cruzándose con otra región (Ej. Lambayeque).
-        if actas_t > 10000 and ubigeo not in ["150000", "150100"]: continue
-            
-        return {
-            "nombre":    nombre.title(),
-            "pctActas":  avance.get("pctActas", 0),
-            "actasCont": avance.get("actasContabilizadas", 0),
-            "actasTot":  actas_t,
-            "lider":     cands[0]["nombre"],
-            "pctLider":  cands[0]["pct"],
-            "candidatos": cands,
-        }
-    return None
+    return {
+        "nombre":    nombre.title(),
+        "pctActas":  avance.get("pctActas", 0),
+        "actasCont": avance.get("actasContabilizadas", 0),
+        "actasTot":  avance.get("actasTotales", 0),
+        "lider":     cands[0]["nombre"],
+        "pctLider":  cands[0]["pct"],
+        "candidatos": cands,
+    }
 
 def fetch_onpe():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")
@@ -198,9 +181,7 @@ def fetch_onpe():
             result["votosNulos"]   = nulos
             ok_count += 1
 
-    print(f"  ✓ Extrayendo data de {len(UBIGEOS)} jurisdicciones...")
     regiones = []
-    
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         future_to_region = {executor.submit(fetch_region_worker, u, n): n for u, n in UBIGEOS.items()}
         for future in concurrent.futures.as_completed(future_to_region):
@@ -215,7 +196,7 @@ def fetch_onpe():
         for r in regiones: final_regs_dict[r["nombre"]] = r 
         
         result["regiones"] = sorted(final_regs_dict.values(), key=lambda x: strip_accents(x["nombre"]))
-        print(f"  ✓ Regiones listas → {len(result['regiones'])}/{len(UBIGEOS)}")
+        print(f"  ✓ Regiones integradas → {len(result['regiones'])}/{len(UBIGEOS)}")
 
     result["fuente"] = ("api_onpe" if ok_count >= 2 else "api_onpe_parcial" if ok_count == 1 else "respaldo_local")
     result["timestamp"] = datetime.now(timezone.utc).isoformat()
@@ -311,11 +292,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers()
 
 if __name__ == "__main__":
-    # Al iniciar el servidor, borramos cachés viejos para garantizar limpieza
-    if os.path.exists("onpe_cache.json"): os.remove("onpe_cache.json")
-    if os.path.exists("onpe_cache_v24.json"): os.remove("onpe_cache_v24.json")
-    if os.path.exists("onpe_cache_v25.json"): os.remove("onpe_cache_v25.json")
-    
     _load_cache()
     threading.Thread(target=_do_refresh, daemon=True).start()
     threading.Thread(target=refresh_loop, daemon=True).start()

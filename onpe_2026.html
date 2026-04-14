@@ -362,14 +362,14 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 <div id="sec-proyeccion" class="sec">
   <div class="panel full" style="margin-bottom:1rem">
     <div class="ptitle">
-      <span>Proyección de votos — Cuota regional extrapolada al 100%</span>
+      <span>Proyección de votos — Matemática Regional Extrapolada al 100%</span>
       <button class="btn green" onclick="exportTableToCSV('Proyeccion_ONPE_2026.csv')">
         📥 Descargar Excel (CSV)
       </button>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
-      Matemática estricta: Calcula los votos faltantes en cada jurisdicción y asigna a cada candidato una cuota idéntica a su participación actual en esa misma región.<br>
-      <strong>(Proyección Final = Votos Actuales + Votos Faltantes Asignados).</strong>
+      Matemática estricta: Extrapola las actas faltantes y estima los votos adicionales aplicando el % de participación (share) actual del candidato en esa región en específico.<br>
+      <strong>(Proyección Final = Voto Actual + Votos Estimados Faltantes).</strong>
     </p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
                 background:var(--surface2);border-radius:var(--r);margin-bottom:1rem" id="projToggles"></div>
@@ -382,7 +382,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     </div>
   </div>
   <div class="panel full" id="projNational" style="display:none">
-    <div class="ptitle">🇵🇪 Proyección Nacional Consolidada (La sumatoria exacta de la tabla superior)
+    <div class="ptitle">🇵🇪 Proyección Nacional Total (Usando datos consolidados oficiales)
       <span style="font-size:11px;color:var(--faint);font-weight:400;text-transform:none" id="projCoverage"></span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px" id="projNatGrid"></div>
@@ -404,6 +404,7 @@ const COLORS = [
   "#0F6E56","#8B6900","#5a2d82","#555","#333"
 ];
 
+// Identificamos a los candidatos por una palabra clave infalible en su PARTIDO
 const EVO = {
   labels: ["0.008%","10.400%","21.700%","39.400%","42.800%","53.886%"],
   top7: [
@@ -1063,12 +1064,12 @@ function renderRegDet() {
 }
 
 // ══════════════════════════════════════════════════════════
-//  PROYECCIÓN CON AUTO-COMPLETADO Y MATEMÁTICA PURA
+//  PROYECCIÓN CON MATEMÁTICA PURA (SIN AUTOCOMPLETADOS)
 // ══════════════════════════════════════════════════════════
 let projActive = new Set([0,1,2,3,4,5]); 
 
 function renderProyeccion() {
-  const originalRegs = (DATA && DATA.regiones) || [];
+  const regs = (DATA && DATA.regiones) || [];
 
   const togContainer = document.getElementById("projToggles");
   if (!togContainer._built) {
@@ -1082,7 +1083,7 @@ function renderProyeccion() {
     ).join("");
   }
 
-  if (!originalRegs.length) {
+  if (!regs.length) {
     document.getElementById("projBody").innerHTML =
       `<tr><td colspan="20" style="color:var(--faint);padding:1.5rem;text-align:center">
          Sin datos regionales — pulsa ↻ Actualizar
@@ -1095,46 +1096,6 @@ function renderProyeccion() {
   const activeCands = TOP6.filter((_,i) => projActive.has(i));
   if (!activeCands.length) return;
 
-  let regs = JSON.parse(JSON.stringify(originalRegs)); 
-  
-  // AUTO-COMPLETADO MATEMÁTICO INVERSO PARA LIMA METROPOLITANA / EXTRANJERO FALTANTES
-  let natCont = +(DATA.actasContabilizadas || 0);
-  let natTot  = +(DATA.actasTotales || 0);
-  let sumRegCont = regs.reduce((s, r) => s + (+r.actasCont || 0), 0);
-  let sumRegTot  = regs.reduce((s, r) => s + (+r.actasTot || 0), 0);
-
-  let missingCont = Math.max(0, natCont - sumRegCont);
-  let missingTot  = Math.max(0, natTot - sumRegTot);
-
-  let missingCands = [];
-  let totalMissingVotos = 0;
-  
-  (DATA.candidatos || []).forEach(c => {
-      let sumRegVotosCand = regs.reduce((s, r) => {
-          let cr = r.candidatos.find(x => x.nombre === c.nombre);
-          return s + (cr ? +cr.votos : 0);
-      }, 0);
-      
-      let mVotos = Math.max(0, c.votos - sumRegVotosCand);
-      totalMissingVotos += mVotos;
-      missingCands.push({
-          nombre: c.nombre, partido: c.partido, votos: mVotos, pct: 0
-      });
-  });
-
-  if (totalMissingVotos > 0 || missingCont > 0) {
-      missingCands.forEach(c => {
-          c.pct = totalMissingVotos > 0 ? (c.votos / totalMissingVotos * 100) : 0;
-      });
-      regs.push({
-          nombre: "LIMA MET. / EXTRANJERO (Auto-completado)",
-          pctActas: missingTot > 0 ? (missingCont / missingTot * 100) : 0,
-          actasCont: missingCont,
-          actasTot: missingTot,
-          candidatos: missingCands
-      });
-  }
-
   // ── Header ──
   const thStyle = 'class="proj-th"';
   document.getElementById("projHead").innerHTML = `<tr>
@@ -1143,40 +1104,27 @@ function renderProyeccion() {
     <th ${thStyle}>V. contab.</th>
     <th ${thStyle}>V. faltan</th>
     ${activeCands.map(c=>`<th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small>Voto Actual</small></th>
-                          <th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small style="color:var(--amber)">Proyección Final</small></th>`).join("")}
+                          <th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small style="color:var(--amber)">Proy. Final</small></th>`).join("")}
   </tr>`;
 
   // ── Filas ──
   let regsConDatos = 0;
-  let sumVotosCont = 0, sumVotosFalt = 0;
-  let sumCandActual = {}, sumCandProy = {};
   
-  activeCands.forEach(c => { 
-      sumCandActual[c.match] = 0; 
-      sumCandProy[c.match] = 0; 
-  });
-
   const rows = regs.map(r => {
-    // Matemática pura: Usamos actas exactas
+    // Matemática pura con actas
     const aC = +(r.actasCont || 0);
     const aT = +(r.actasTot || 0);
     const pctAc = aT > 0 ? (aC / aT * 100) : (+r.pctActas || 0);
-    
     const totalVotos = (r.candidatos||[]).reduce((s,c)=>s+(+c.votos||0), 0);
     
-    // Regla de 3 Simple: (Votos Contabilizados / Actas Contabilizadas) * Actas Faltantes = Votos Faltantes
+    // Regla de 3 Simple: (Votos / Actas Contabilizadas) * Actas Faltantes
     let vFalt = (aC > 0 && aT > aC) ? Math.round(totalVotos * (aT - aC) / aC) : 0;
-    vFalt = Math.max(0, vFalt); 
 
     if (pctAc > 0) regsConDatos++;
-    sumVotosCont += totalVotos;
-    sumVotosFalt += vFalt;
 
     const tdActual = activeCands.map(cand => {
       const cr = _findCand(r.candidatos||[], cand);
       const v = +(cr?.votos||0), p = +(cr?.pct||0);
-      sumCandActual[cand.match] += v;
-      
       return `<td class="proj-td">
         ${v>0 ? v.toLocaleString("es-PE") : "–"}
         ${p>0 ? `<span class="proj-badge" style="background:${cand.color}22;color:${cand.color}">${p.toFixed(3)}%</span>` : ""}
@@ -1187,14 +1135,12 @@ function renderProyeccion() {
       const cr = _findCand(r.candidatos||[], cand);
       const vActual = +(cr?.votos||0);
       
-      // La "Cuota" (Share) del candidato en esa región específica
+      // La "Cuota" (Share) actual del candidato
       const candShare = totalVotos > 0 ? (vActual / totalVotos) : 0;
       
-      // Repartimos los votos faltantes según esa cuota
-      const vExtra = Math.max(0, Math.round(vFalt * candShare));
+      // Votos extra = Votos totales faltantes * Cuota del candidato
+      const vExtra = Math.round(vFalt * candShare);
       const total  = vActual + vExtra; 
-      
-      sumCandProy[cand.match] += total;
       
       if (pctAc>0 && pctAc<99.9) {
           return `<td class="proj-td" style="font-weight:600;color:${cand.color}">
@@ -1214,9 +1160,7 @@ function renderProyeccion() {
         rowContent += tdActual[i] + tdProy[i];
     }
 
-    const bgStyle = r.nombre.includes("Auto-completado") ? 'style="background:rgba(0,0,0,0.02)"' : '';
-
-    return `<tr class="proj-tr" ${bgStyle}>
+    return `<tr class="proj-tr">
       <td class="proj-td" style="text-align:left">${r.nombre}</td>
       <td class="proj-td">${pctAc>0?pctAc.toFixed(3)+"%":"–"}</td>
       <td class="proj-td">${totalVotos>0?totalVotos.toLocaleString("es-PE"):"–"}</td>
@@ -1225,41 +1169,36 @@ function renderProyeccion() {
     </tr>`;
   }).join("");
 
-  // ── TFOOT (Consolidado final exacto) ──
-  let tfootHtml = `<tr class="proj-tr" style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
-    <td class="proj-td" style="text-align:left">TOTAL NACIONAL (Suma Exacta de Tabla)</td>
-    <td class="proj-td">${DATA.pctActas ? (+DATA.pctActas).toFixed(3)+"%" : "–"}</td>
-    <td class="proj-td">${sumVotosCont.toLocaleString("es-PE")}</td>
-    <td class="proj-td" style="color:var(--amber)">${sumVotosFalt.toLocaleString("es-PE")}</td>
-  `;
-  activeCands.forEach(cand => {
-      tfootHtml += `<td class="proj-td">${sumCandActual[cand.match].toLocaleString("es-PE")}</td>`;
-      tfootHtml += `<td class="proj-td" style="color:${cand.color}">${sumCandProy[cand.match].toLocaleString("es-PE")}</td>`;
-  });
-  tfootHtml += `</tr>`;
-
   document.getElementById("projBody").innerHTML = rows;
-  document.getElementById("projFoot").innerHTML = tfootHtml;
-  document.getElementById("projCoverage").textContent =
-    ` · Suma matemática exacta de ${regsConDatos} jurisdicciones`;
+  document.getElementById("projFoot").innerHTML = "";
+  document.getElementById("projCoverage").textContent = ` · ${regsConDatos} jurisdicciones extraídas de ONPE`;
 
-  // ── Proyección Nacional KPI ──
-  const totalFinal = sumVotosCont + sumVotosFalt;
+  // ── Proyección Nacional KPI (Totalmente Independiente usando Matemática Directa sobre TOTAL ONPE) ──
+  const natActasCont = +(DATA.actasContabilizadas || 0);
+  const natActasTot  = +(DATA.actasTotales || 0);
+  const natVotosValidos = +(DATA.votosValidos || 0);
+  
+  let natVFalt = (natActasCont > 0 && natActasTot > natActasCont) ? Math.round(natVotosValidos * (natActasTot - natActasCont) / natActasCont) : 0;
+  const totalFinal = natVotosValidos + natVFalt;
+
   const natCards = activeCands.map(c => {
-    const actual  = sumCandActual[c.match] || 0;
-    const proy    = sumCandProy[c.match] || 0;
-    const vExtra  = proy - actual; 
+    const natReal = _findCand(DATA.candidatos||[], c);
+    const actual  = natReal ? +natReal.votos : 0;
+    const candShare = natVotosValidos > 0 ? (actual / natVotosValidos) : 0;
     
-    const pctA   = sumVotosCont > 0 ? ((actual / sumVotosCont) * 100).toFixed(3) + "% s/contab." : "–";
+    const vExtra = Math.round(natVFalt * candShare);
+    const proy   = actual + vExtra; 
+    
+    const pctA   = natVotosValidos > 0 ? (candShare * 100).toFixed(3) + "% s/válidos" : "–";
     const pctP   = totalFinal > 0 ? ((proy / totalFinal) * 100).toFixed(3) + "%" : "–";
     
     return `<div class="proj-nat-card" style="border-top-color:${c.color}">
       <div class="proj-nat-lbl">${c.nombre}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${c.partido}</div>
-      <div class="proj-nat-lbl">Votos Actuales (Suma Tabla)</div>
+      <div class="proj-nat-lbl">Votos Nacionales ONPE</div>
       <div class="proj-nat-val">${actual>0?actual.toLocaleString("es-PE"):"–"}</div>
       <div class="proj-nat-sub">${pctA}</div>
-      <div class="proj-nat-lbl" style="margin-top:8px">Proyección Final (Suma Tabla)</div>
+      <div class="proj-nat-lbl" style="margin-top:8px">Proyección Final Oficial</div>
       <div class="proj-nat-val" style="color:${c.color}">${proy>0?proy.toLocaleString("es-PE"):"–"}</div>
       <div class="proj-nat-sub">${pctP} del proyectado <span style="color:var(--muted); font-weight:600"> (+${vExtra>0?vExtra.toLocaleString("es-PE"):"0"} extra)</span></div>
     </div>`;
