@@ -361,7 +361,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
   <div class="panel full" style="margin-bottom:1rem">
     <div class="ptitle">Proyección de votos — tendencia actual extrapolada al 100% de actas</div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
-      Para cada región: votos ya contabilizados y proyección final al 100% de actas, asumiendo que la distribución proporcional actual se mantiene hasta el final del conteo en esa región. El valor en pequeño indica cuántos <strong>votos adicionales</strong> sumarían.
+      Para cada región: votos ya contabilizados y proyección final al 100% de actas, asumiendo que la distribución proporcional actual se mantiene hasta el final del conteo en esa región. El valor en pequeño indica cuántos <strong>votos adicionales</strong> sumarían en esa jurisdicción.
     </p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
                 background:var(--surface2);border-radius:var(--r);margin-bottom:1rem" id="projToggles"></div>
@@ -373,8 +373,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     </div>
   </div>
   <div class="panel full" id="projNational" style="display:none">
-    <div class="ptitle">🇵🇪 Proyección nacional — suma de todas las regiones con datos
-      <span style="font-size:11px;color:var(--faint);font-weight:400;text-transform:none" id="projCoverage"></span>
+    <div class="ptitle">🇵🇪 Proyección nacional — Cálculo Extrapolado Matemático Seguro
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px" id="projNatGrid"></div>
   </div>
@@ -1057,7 +1056,7 @@ function renderRegDet() {
 }
 
 // ══════════════════════════════════════════════════════════
-//  PROYECCIÓN
+//  PROYECCIÓN MEJORADA (Cálculo Nacional Independiente)
 // ══════════════════════════════════════════════════════════
 let projActive = new Set([0,1,2,3,4,5]); 
 
@@ -1099,24 +1098,19 @@ function renderProyeccion() {
                           <th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small style="color:var(--amber)">proyect.</small></th>`).join("")}
   </tr>`;
 
-  // ── Filas ──
-  const natActual  = {}, natProy = {};
-  activeCands.forEach(c => { natActual[c.match]=0; natProy[c.match]=0; });
-  let totalContNac=0, totalFaltNac=0, regsConDatos=0;
+  // ── Filas de la Tabla Regional ──
+  let regsConDatos = 0;
 
   const rows = regs.map(r => {
     const pctAc = +r.pctActas || 0;
     const totalVotos = (r.candidatos||[]).reduce((s,c)=>s+(+c.votos||0), 0);
     const vFalt = (pctAc > 0 && pctAc < 100) ? Math.round(totalVotos * (100 - pctAc) / pctAc) : 0;
 
-    totalContNac += totalVotos;
-    totalFaltNac += vFalt;
     if (pctAc > 0) regsConDatos++;
 
     const tdActual = activeCands.map(cand => {
       const cr = _findCand(r.candidatos||[], cand);
       const v = +(cr?.votos||0), p = +(cr?.pct||0);
-      natActual[cand.match] += v;
       return `<td class="proj-td">
         ${v>0 ? v.toLocaleString("es-PE") : "–"}
         ${p>0 ? `<span class="proj-badge" style="background:${cand.color}22;color:${cand.color}">${p.toFixed(1)}%</span>` : ""}
@@ -1128,7 +1122,6 @@ function renderProyeccion() {
       const pct = +(cr?.pct||0) / 100;
       const vExtra = Math.round(vFalt * pct);
       const total  = +(cr?.votos||0) + vExtra;
-      natProy[cand.match] += total;
       
       if (pctAc>0 && pctAc<99.9) {
           return `<td class="proj-td" style="font-weight:600;color:${cand.color}">
@@ -1143,7 +1136,6 @@ function renderProyeccion() {
       }
     });
     
-    // Entrelazar actual y proyectado por candidato
     let rowContent = "";
     for(let i=0; i<activeCands.length; i++) {
         rowContent += tdActual[i] + tdProy[i];
@@ -1162,18 +1154,24 @@ function renderProyeccion() {
   document.getElementById("projCoverage").textContent =
     ` · ${regsConDatos}/${regs.length} regiones con datos`;
 
-  // ── Proyección nacional ──
-  const totalFinal = totalContNac + totalFaltNac;
+  // ── Proyección Nacional Independiente ──
+  // En vez de sumar las filas (que podrían estar incompletas), 
+  // proyectamos sobre el 100% de la DATA Nacional de ONPE.
+  const pctNac = +(DATA.pctActas || 0);
+  const totalValidosNac = +(DATA.votosValidos || 0);
+  const vFaltNac = (pctNac > 0 && pctNac < 100) ? Math.round(totalValidosNac * (100 - pctNac) / pctNac) : 0;
+  const totalFinal = totalValidosNac + vFaltNac;
+
   const natCards = activeCands.map(c => {
     const natReal = _findCand(DATA.candidatos||[], c);
-    const actual  = natReal ? +natReal.votos : (natActual[c.match]||0);
-    const pctReal = natReal ? +natReal.pct   : 0;
-    const proy    = natProy[c.match]||0;
-    const vExtra  = proy - actual;
+    const actual  = natReal ? +natReal.votos : 0;
+    const pctReal = natReal ? (+natReal.pct / 100) : 0;
     
-    const pctA    = pctReal>0 ? pctReal.toFixed(3)+"% s/válidos" :
-                    (totalContNac>0 ? ((actual/totalContNac)*100).toFixed(2)+"%" : "–");
-    const pctP    = totalFinal>0 ? ((proy/totalFinal)*100).toFixed(2)+"%" : "–";
+    const vExtra = Math.round(vFaltNac * pctReal);
+    const proy   = actual + vExtra; // Imposible que sea menor que el actual.
+    
+    const pctA   = (pctReal * 100).toFixed(3) + "% s/válidos";
+    const pctP   = totalFinal>0 ? ((proy/totalFinal)*100).toFixed(2)+"%" : "–";
     
     return `<div class="proj-nat-card" style="border-top-color:${c.color}">
       <div class="proj-nat-lbl">${c.nombre}</div>

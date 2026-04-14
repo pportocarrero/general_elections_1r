@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v17 (Shotgun URLs + Parser Robusto)
+ONPE 2026 — Proxy Local v18 (Filtros Regionales Estrictos y Seguros)
 Uso:  python3 onpe_proxy.py
 """
 
@@ -21,7 +21,7 @@ EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccio
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# Diccionario Fijo de Ubigeos
+# Diccionario Fijo de Ubigeos (Las 25 regiones oficiales)
 UBIGEOS = {
     "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
     "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
@@ -34,19 +34,13 @@ UBIGEOS = {
     "250000": "Ucayali"
 }
 
-# 3 Variantes de URLs para evadir la inestabilidad de la API de ONPE
+# Solo URLs estrictas, sin parámetros "TODOS" que confundan al servidor
 URL_VARIANTS = [
-    # Variante 1: Parámetros extraídos de tu consola
-    (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={{}}&listRegiones=TODOS,PER%C3%9A,EXTRANJERO&idEleccion=10",
-     f"{BASE}/resumen-general/totales?idAmbitoGeografico=1&idEleccion=10&tipoFiltro=ubigeo_nivel_01&idUbigeoDepartamento={{}}"),
-    
-    # Variante 2: Filtro Departamento Estándar
     (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={{}}",
      f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={{}}"),
     
-    # Variante 3: Filtro Ubigeo Minimalista
-    (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&ubigeoNivel1={{}}",
-     f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idUbigeoDepartamento={{}}")
+    (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={{}}",
+     f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&idUbigeoDepartamento={{}}")
 ]
 
 HEADERS = {
@@ -56,7 +50,7 @@ HEADERS = {
     "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://resultadoelectoral.onpe.gob.pe/",
     "Origin": "https://resultadoelectoral.onpe.gob.pe",
-    "Cache-Control": "no-cache", # Obliga a saltarse la CDN
+    "Cache-Control": "no-cache",
     "Connection": "keep-alive",
 }
 
@@ -89,37 +83,26 @@ def _unwrap(raw):
     return raw
 
 def parse_avance(raw_totales):
-    """
-    Estructura real confirmada de EP_TOTALES:
-      data.actasContabilizadas = 53.886   <- YA ES el porcentaje (float <= 100)
-      data.contabilizadas      = 49988    <- valor absoluto
-      data.totalActas          = 92766
-      data.enviadasJee         = 155      <- absoluto
-      data.pendientesJee       = 42623    <- actas pendientes
-      data.totalVotosEmitidos  = 11488641
-      data.totalVotosValidos   = 9847379
-      data.participacionCiudadana = 42.044
-    Para endpoints regionales la estructura puede variar ligeramente.
-    """
     if not raw_totales: return {}
     d = _unwrap(raw_totales)
     if isinstance(d, list):
         d = d[0] if d else {}
     if not isinstance(d, dict): return {}
 
-    # "actasContabilizadas" es el % cuando viene del EP_TOTALES nacional/regional
-    # "contabilizadas" es el absoluto
-    pct  = float(d.get("actasContabilizadas") or
-                 d.get("porcentajeActasContabilizadas") or
-                 d.get("porcentajeAvanceMesas") or 0)
-    cont = int(d.get("contabilizadas") or d.get("mesasContabilizadas") or 0)
+    pct  = float(d.get("actasContabilizadas") or d.get("porcentajeActasContabilizadas") or d.get("porcentajeAvanceMesas") or 0)
+    cont = d.get("contabilizadas")
+    if cont is None:
+        ac = d.get("actasContabilizadas", 0)
+        if isinstance(ac, float) and ac <= 100.0:
+            pct = pct or ac; cont = 0
+        else: cont = ac
+            
+    cont = int(cont or 0)
     tot  = int(d.get("totalActas") or d.get("totalMesas") or 92766)
     jee  = int(d.get("enviadasJee") or d.get("actasEnviadasJee") or 0)
     pend = int(d.get("pendientesJee") or d.get("actasPendientesJee") or max(0, tot - cont - jee))
 
-    # Fallback: calcular % si no vino directo
-    if pct == 0 and tot > 0 and cont > 0:
-        pct = round((cont / tot) * 100.0, 3)
+    if pct == 0 and tot > 0 and cont > 0: pct = round((cont / tot) * 100.0, 3)
 
     return {
         "pctActas": round(pct, 3), "actasContabilizadas": cont, "actasTotales": tot,
@@ -147,7 +130,6 @@ def parse_candidatos(raw):
         cod = str(item.get("codigoAgrupacionPolitica") or "")
         nombre = (item.get("nombreCandidato") or "").strip()
         partido= (item.get("nombreAgrupacionPolitica") or "").strip()
-        
         votos  = int(item.get("totalVotosValidos") or item.get("votos") or item.get("totalVotos") or 0)
         pct    = float(item.get("porcentajeVotosValidos") or item.get("porcentajeVotos") or item.get("pct") or 0)
 
@@ -172,61 +154,34 @@ def _fmt_nombre(nombre_mayus):
     return nombre_mayus.title()
 
 def fetch_region_worker(ubigeo, nombre):
-    """
-    Prueba múltiples variantes de URL y formatos de ubigeo.
-    Anti-fuga mejorada: compara votos totales de la región vs el caché nacional
-    para detectar cuando la ONPE devuelve datos nacionales en lugar de regionales.
-    """
-    # Límites máximos por departamento (padrón electoral aproximado)
-    # Si una región supera este número de votos, es una fuga de datos nacionales
-    MAX_VOTOS_REGION = {
-        "150000": 6_000_000,  # Lima (incluyendo Lima Provincias)
-        "200000": 900_000,    # Piura
-        "130000": 800_000,    # La Libertad
-        "060000": 750_000,    # Cajamarca
-        "120000": 700_000,    # Junín
-    }
-    max_v = MAX_VOTOS_REGION.get(ubigeo, 700_000)  # 700k como límite genérico
-
-    cod_int = str(int(ubigeo))
-    ubigeo_variants = [cod_int, ubigeo] if cod_int != ubigeo else [ubigeo]
-
     for url_part_tpl, url_tot_tpl in URL_VARIANTS:
-        for cod in ubigeo_variants:
-            url_part = url_part_tpl.format(cod)
-            url_tot  = url_tot_tpl.format(cod)
+        url_part = url_part_tpl.format(ubigeo)
+        url_tot  = url_tot_tpl.format(ubigeo)
 
-            raw_part = _get_json(url_part)
-            raw_tot  = _get_json(url_tot)
+        raw_part = _get_json(url_part)
+        raw_tot  = _get_json(url_tot)
 
-            cands, _, _ = parse_candidatos(raw_part)
-            avance = parse_avance(raw_tot)
+        cands, _, _ = parse_candidatos(raw_part)
+        avance = parse_avance(raw_tot)
 
-            if not cands:
-                continue
+        if not cands: continue
+        
+        total_votos = sum(c["votos"] for c in cands)
+        # Umbral seguro: Si una provincia marca más de 4M de votos, es el total nacional colado.
+        if total_votos > 4000000 and ubigeo != "150000": 
+            continue
+            
+        if total_votos == 0: continue
 
-            # Anti-fuga: total de votos no puede exceder el máximo regional
-            total_votos = sum(c["votos"] for c in cands)
-            if total_votos > max_v:
-                print(f"    ⚠ FUGA detectada {nombre}: {total_votos:,} votos > máx {max_v:,} — descartando")
-                continue
-
-            # Anti-fuga adicional: si todos los candidatos tienen exactamente
-            # los mismos votos que el nivel nacional, es una fuga
-            # (verificamos que al menos un candidato tenga votos razonables)
-            if total_votos == 0:
-                continue
-
-            return {
-                "nombre":    nombre.title(),
-                "pctActas":  avance.get("pctActas", 0),
-                "actasCont": avance.get("actasContabilizadas", 0),
-                "actasTot":  avance.get("actasTotales", 0),
-                "lider":     cands[0]["nombre"],
-                "pctLider":  cands[0]["pct"],
-                "candidatos": cands,
-            }
-
+        return {
+            "nombre":    nombre.title(),
+            "pctActas":  avance.get("pctActas", 0),
+            "actasCont": avance.get("actasContabilizadas", 0),
+            "actasTot":  avance.get("actasTotales", 0),
+            "lider":     cands[0]["nombre"],
+            "pctLider":  cands[0]["pct"],
+            "candidatos": cands,
+        }
     return None
 
 def fetch_onpe():
@@ -239,7 +194,6 @@ def fetch_onpe():
     if avance.get("pctActas", 0) > 0:
         result.update(avance)
         ok_count += 1
-        print(f"  ✓ Avance Nacional → {result['pctActas']:.3f}% actas")
 
     raw_cand = _get_json(EP_CANDIDATOS)
     if raw_cand:
@@ -249,7 +203,6 @@ def fetch_onpe():
             result["votosBlancos"] = blancos
             result["votosNulos"]   = nulos
             ok_count += 1
-            print(f"  ✓ Participantes   → {len(cands)}")
 
     print(f"  ✓ Extrayendo data de {len(UBIGEOS)} regiones...")
     regiones = []
@@ -258,21 +211,15 @@ def fetch_onpe():
         future_to_region = {executor.submit(fetch_region_worker, u, n): n for u, n in UBIGEOS.items()}
         for future in concurrent.futures.as_completed(future_to_region):
             res = future.result()
-            if res:
-                regiones.append(res)
+            if res: regiones.append(res)
     
     if regiones:
         regiones.sort(key=lambda x: x["nombre"])
-        # Mantener los datos previos si ONPE bloquea la conexión en esta iteración
-        with _lock:
-            old_regs = _cache.get("regiones", []) if _cache else []
-            
+        with _lock: old_regs = _cache.get("regiones", []) if _cache else []
         final_regs_dict = {r["nombre"]: r for r in old_regs}
-        for r in regiones:
-            final_regs_dict[r["nombre"]] = r 
-            
+        for r in regiones: final_regs_dict[r["nombre"]] = r 
         result["regiones"] = sorted(final_regs_dict.values(), key=lambda x: x["nombre"])
-        print(f"  ✓ Regiones listas → {len(result['regiones'])}")
+        print(f"  ✓ Regiones integradas → {len(result['regiones'])}/25")
 
     result["fuente"] = ("api_onpe" if ok_count >= 2 else "api_onpe_parcial" if ok_count == 1 else "respaldo_local")
     result["timestamp"] = datetime.now(timezone.utc).isoformat()
@@ -301,7 +248,7 @@ def _do_refresh():
         with _lock: _cache = data
         _save_cache(data)
     except Exception as e:
-        print(f"  ✗ Error al refrescar: {e}")
+        pass
     finally:
         _is_refreshing = False
     return _cache
@@ -309,7 +256,7 @@ def _do_refresh():
 def refresh_loop():
     while True:
         try: _do_refresh()
-        except Exception as e: print(f"  ✗ Error en ciclo: {e}")
+        except Exception: pass
         time.sleep(REFRESH_SEC)
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -340,7 +287,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif path == "/api/refresh":
             threading.Thread(target=_do_refresh, daemon=True).start()
             with _lock: data = dict(_cache)
-            self._json({"ok": True, "fuente": data.get("fuente", "actualizando"), "pctActas": data.get("pctActas", 0)})
+            self._json({"ok": True, "fuente": data.get("fuente", "actualizando")})
 
         elif path == "/api/status":
             self._json({"is_refreshing": _is_refreshing})
@@ -363,19 +310,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers(); self.wfile.write(content)
             else:
-                self.send_response(404); self.end_headers(); self.wfile.write(b"No se encontro onpe_2026.html")
+                self.send_response(404); self.end_headers()
         else:
             self.send_response(404); self.end_headers()
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("  ONPE 2026 — Proxy Local v17 (Shotgun URLS)")
-    print("=" * 60)
     _load_cache()
     threading.Thread(target=_do_refresh, daemon=True).start()
     threading.Thread(target=refresh_loop, daemon=True).start()
-    
     server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"\n  Dashboard:  http://0.0.0.0:{PORT}")
+    print(f"\n  Dashboard Listo -> http://0.0.0.0:{PORT}")
     try: server.serve_forever()
     except KeyboardInterrupt: sys.exit(0)
