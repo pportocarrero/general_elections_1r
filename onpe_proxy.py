@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v10 (Mapa GeoJSON integrado)
+ONPE 2026 — Proxy Local v11 (Endpoints Limpios + Anti Fuga Nacional)
 Uso:  python3 onpe_proxy.py
 Web:  http://localhost:8765
 """
@@ -10,6 +10,7 @@ import urllib.request, urllib.error, urllib.parse
 import gzip, os, sys
 from datetime import datetime, timezone
 
+# Compatible con local y con despliegue en la nube (Render/Railway)
 PORT        = int(os.environ.get("PORT", 8765))
 REFRESH_SEC = 60
 CACHE_FILE  = "onpe_cache.json"
@@ -20,11 +21,15 @@ BASE        = "https://resultadoelectoral.onpe.gob.pe/presentacion-backend"
 EP_MESAS     = BASE + "/mesa/totales?tipoFiltro=eleccion"
 EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccion"
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
-
-# Endpoints Regionales
-EP_REG_PART  = BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={}&listRegiones=TODOS,PER%C3%9A,EXTRANJERO&idEleccion=10"
-EP_REG_TOT   = BASE + "/resumen-general/totales?idAmbitoGeografico=1&idEleccion=10&tipoFiltro=ubigeo_nivel_01&idUbigeoDepartamento={}"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
+
+# Endpoints Regionales (Ruta Estricta 1)
+EP_REG_PART_1 = BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={}"
+EP_REG_TOT_1  = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={}"
+
+# Endpoints Regionales (Ruta de Respaldo 2)
+EP_REG_PART_2 = BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={}"
+EP_REG_TOT_2  = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&idUbigeoDepartamento={}"
 
 # Diccionario Oficial de Ubigeos
 UBIGEOS = {
@@ -83,16 +88,28 @@ def _unwrap(raw):
 def parse_avance(raw_totales):
     if not raw_totales: return {}
     d = _unwrap(raw_totales)
+    
+    # Manejar caso en el que la API devuelva una lista
+    if isinstance(d, list):
+        if len(d) > 0: d = d[0]
+        else: return {}
     if not isinstance(d, dict): return {}
 
-    pct  = float(d.get("actasContabilizadas") or d.get("porcentajeActasContabilizadas") or 0)
+    # Prioridad 1: Buscar porcentajes explícitos
+    pct = float(d.get("porcentajeActasContabilizadas") or d.get("porcentajeAvanceMesas") or 0)
+    
+    # Prioridad 2: Cálculo manual seguro para evitar confusión con números enteros
     cont = int(d.get("contabilizadas") or d.get("actasContabilizadas") or 0)
     tot  = int(d.get("totalActas") or 92766)
     jee  = int(d.get("enviadasJee") or 0)
     pend = int(d.get("pendientesJee") or max(0, tot - cont - jee))
 
+    # Si el porcentaje falló pero tenemos datos crudos, lo calculamos
+    if pct == 0 and tot > 0:
+        pct = (cont / tot) * 100.0
+
     return {
-        "pctActas": pct, "actasContabilizadas": cont, "actasTotales": tot,
+        "pctActas": round(pct, 3), "actasContabilizadas": cont, "actasTotales": tot,
         "actasJEE": jee, "actasPendientes": pend,
         "votosEmitidos": int(d.get("totalVotosEmitidos") or 0),
         "votosValidos": int(d.get("totalVotosValidos") or 0),
@@ -102,6 +119,13 @@ def parse_avance(raw_totales):
 def parse_candidatos(raw):
     if not raw: return [], 0, 0
     items = _unwrap(raw)
+    
+    # Manejar variaciones en la estructura JSON
+    if isinstance(items, dict):
+        if "candidatos" in items: items = items["candidatos"]
+        elif "participantes" in items: items = items["participantes"]
+        else: items = [items]
+        
     if not isinstance(items, list): return [], 0, 0
 
     candidatos = []
@@ -111,8 +135,10 @@ def parse_candidatos(raw):
         cod = str(item.get("codigoAgrupacionPolitica") or "")
         nombre = (item.get("nombreCandidato") or "").strip()
         partido= (item.get("nombreAgrupacionPolitica") or "").strip()
-        votos  = int(item.get("totalVotosValidos") or 0)
-        pct    = float(item.get("porcentajeVotosValidos") or 0)
+        
+        # Buscar los votos en múltiples llaves posibles
+        votos  = int(item.get("totalVotosValidos") or item.get("votos") or item.get("totalVotos") or 0)
+        pct    = float(item.get("porcentajeVotosValidos") or item.get("porcentajeVotos") or item.get("pct") or 0)
 
         if cod == "80": votos_blancos = votos; continue
         if cod == "81": votos_nulos = votos; continue
@@ -135,10 +161,23 @@ def _fmt_nombre(nombre_mayus):
     return nombre_mayus.title()
 
 def fetch_region(ubigeo, nombre):
-    raw_part = _get_json(EP_REG_PART.format(ubigeo))
-    raw_tot  = _get_json(EP_REG_TOT.format(ubigeo))
+    # Intento 1: Endpoints principales
+    raw_part = _get_json(EP_REG_PART_1.format(ubigeo))
+    raw_tot  = _get_json(EP_REG_TOT_1.format(ubigeo))
+    
     cands, _, _ = parse_candidatos(raw_part)
     avance = parse_avance(raw_tot)
+
+    # Validar "Fuga Nacional": Si el líder tiene > 2M de votos y no es Lima, 
+    # significa que el servidor de la ONPE colapsó y mandó el total del país.
+    is_national_leak = cands and cands[0]["votos"] > 2000000 and nombre != "Lima"
+
+    # Si falló o hay fuga, aplicamos el endpoint de respaldo
+    if not cands or is_national_leak or avance.get("pctActas", 0) == 0:
+        raw_part = _get_json(EP_REG_PART_2.format(ubigeo))
+        raw_tot  = _get_json(EP_REG_TOT_2.format(ubigeo))
+        cands, _, _ = parse_candidatos(raw_part)
+        avance = parse_avance(raw_tot)
 
     if not cands: return None
 
@@ -155,6 +194,7 @@ def fetch_onpe():
     result   = dict(FALLBACK)
     ok_count = 0
 
+    # 1) Avance Nacional
     raw_tot = _get_json(EP_TOTALES)
     avance  = parse_avance(raw_tot)
     if avance.get("pctActas", 0) > 0:
@@ -162,6 +202,7 @@ def fetch_onpe():
         ok_count += 1
         print(f"  ✓ avance   → {result['pctActas']:.3f}% actas")
 
+    # 2) Candidatos Nacionales
     raw_cand = _get_json(EP_CANDIDATOS)
     if raw_cand:
         cands, blancos, nulos = parse_candidatos(raw_cand)
@@ -172,6 +213,7 @@ def fetch_onpe():
             ok_count += 1
             print(f"  ✓ candidatos → {len(cands)} participantes")
 
+    # 3) Regiones Limpias
     print(f"  ✓ Extrayendo data de {len(UBIGEOS)} regiones...")
     regiones = []
     
@@ -182,6 +224,7 @@ def fetch_onpe():
             print(f"    - {nombre}: OK ({res['pctActas']}% actas)")
         else:
             print(f"    - {nombre}: Sin datos en este corte")
+        # Pequeña pausa para no saturar la ONPE
         time.sleep(0.4) 
     
     if regiones:
@@ -266,12 +309,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  ONPE 2026 — Proxy Local v10 (Ubigeos y Mapa)")
+    print("  ONPE 2026 — Proxy Local v11 (Anti-Fuga)")
     print("=" * 60)
     _load_cache()
     threading.Thread(target=_do_refresh, daemon=True).start()
     threading.Thread(target=refresh_loop, daemon=True).start()
-    #server = http.server.ThreadingHTTPServer(("localhost", PORT), Handler)
     server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"\n  Dashboard:  http://0.0.0.0:{PORT}")
     try: server.serve_forever()
