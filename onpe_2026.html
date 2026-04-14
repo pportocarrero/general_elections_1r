@@ -320,7 +320,9 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 
   <div class="panel full">
     <div class="ptitle">Mapa de Calor — Crecimiento Logarítmico de Votos por Corte</div>
+    
     <div id="hmFiltersContainer"></div>
+
     <div style="overflow-x:auto">
       <div id="heatmapContainer"></div>
     </div>
@@ -380,7 +382,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     </div>
   </div>
   <div class="panel full" id="projNational" style="display:none">
-    <div class="ptitle">🇵🇪 Proyección Nacional Consolidada (Suma matemática de la tabla)
+    <div class="ptitle">🇵🇪 Proyección Nacional Consolidada (La sumatoria exacta de la tabla superior)
       <span style="font-size:11px;color:var(--faint);font-weight:400;text-transform:none" id="projCoverage"></span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px" id="projNatGrid"></div>
@@ -879,7 +881,7 @@ function renderEvoHeatmap() {
           let bg = scales[i-1](diff);
           
           html += `<td class="hm-cell" style="background-color: ${bg};">
-                      +${diff.toFixed(2)}%
+                      +${diff.toFixed(3)}%
                    </td>`;
       }
       html += `</tr>`;
@@ -1093,7 +1095,7 @@ function renderProyeccion() {
   const activeCands = TOP6.filter((_,i) => projActive.has(i));
   if (!activeCands.length) return;
 
-  // AUTO-COMPLETADO DE FUGAS Y EXTRANJERO
+  // AUTO-COMPLETADO NACIONAL (Para que la tabla sume exactamente el 100% de la ONPE)
   let regs = JSON.parse(JSON.stringify(originalRegs)); 
   
   let natCont = +(DATA.actasContabilizadas || 0);
@@ -1120,7 +1122,7 @@ function renderProyeccion() {
       });
   });
 
-  if (totalMissingVotos > 0) {
+  if (totalMissingVotos > 0 || missingCont > 0) {
       missingCands.forEach(c => {
           c.pct = totalMissingVotos > 0 ? (c.votos / totalMissingVotos * 100) : 0;
       });
@@ -1173,7 +1175,7 @@ function renderProyeccion() {
       
       return `<td class="proj-td">
         ${v>0 ? v.toLocaleString("es-PE") : "–"}
-        ${p>0 ? `<span class="proj-badge" style="background:${cand.color}22;color:${cand.color}">${p.toFixed(1)}%</span>` : ""}
+        ${p>0 ? `<span class="proj-badge" style="background:${cand.color}22;color:${cand.color}">${p.toFixed(3)}%</span>` : ""}
       </td>`;
     });
 
@@ -1183,7 +1185,7 @@ function renderProyeccion() {
       const pct = +(cr?.pct||0) / 100;
       
       const vExtra = Math.max(0, Math.round(vFalt * pct));
-      const total  = vActual + vExtra; 
+      const total  = vActual + vExtra; // Proyección = Actual + Faltante
       
       sumCandProy[cand.match] += total;
       
@@ -1205,9 +1207,11 @@ function renderProyeccion() {
         rowContent += tdActual[i] + tdProy[i];
     }
 
-    return `<tr class="proj-tr">
+    const bgStyle = r.nombre.includes("Auto-completado") ? 'style="background:rgba(0,0,0,0.02)"' : '';
+
+    return `<tr class="proj-tr" ${bgStyle}>
       <td class="proj-td" style="text-align:left">${r.nombre}</td>
-      <td class="proj-td">${pctAc>0?pctAc.toFixed(1)+"%":"–"}</td>
+      <td class="proj-td">${pctAc>0?pctAc.toFixed(3)+"%":"–"}</td>
       <td class="proj-td">${totalVotos>0?totalVotos.toLocaleString("es-PE"):"–"}</td>
       <td class="proj-td" style="color:var(--amber)">${vFalt>0?vFalt.toLocaleString("es-PE"):"–"}</td>
       ${rowContent}
@@ -1216,8 +1220,8 @@ function renderProyeccion() {
 
   // ── TFOOT (Consolidado final exacto) ──
   let tfootHtml = `<tr class="proj-tr" style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
-    <td class="proj-td" style="text-align:left">TOTAL REGIONES LISTADAS</td>
-    <td class="proj-td">–</td>
+    <td class="proj-td" style="text-align:left">TOTAL NACIONAL</td>
+    <td class="proj-td">${DATA.pctActas ? (+DATA.pctActas).toFixed(3)+"%" : "–"}</td>
     <td class="proj-td">${sumVotosCont.toLocaleString("es-PE")}</td>
     <td class="proj-td" style="color:var(--amber)">${sumVotosFalt.toLocaleString("es-PE")}</td>
   `;
@@ -1230,7 +1234,7 @@ function renderProyeccion() {
   document.getElementById("projBody").innerHTML = rows;
   document.getElementById("projFoot").innerHTML = tfootHtml;
   document.getElementById("projCoverage").textContent =
-    ` · ${regsConDatos}/${regs.length} regiones con datos (incluyendo extrap.)`;
+    ` · Suma exacta de ${regsConDatos} regiones`;
 
   // ── Proyección Nacional KPI ──
   const totalFinal = sumVotosCont + sumVotosFalt;
@@ -1240,7 +1244,7 @@ function renderProyeccion() {
     const vExtra  = proy - actual; 
     
     const pctA   = sumVotosCont > 0 ? ((actual / sumVotosCont) * 100).toFixed(3) + "% s/contab." : "–";
-    const pctP   = totalFinal > 0 ? ((proy / totalFinal) * 100).toFixed(2) + "%" : "–";
+    const pctP   = totalFinal > 0 ? ((proy / totalFinal) * 100).toFixed(3) + "%" : "–";
     
     return `<div class="proj-nat-card" style="border-top-color:${c.color}">
       <div class="proj-nat-lbl">${c.nombre}</div>
