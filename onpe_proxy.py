@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v18 (Filtros Regionales Estrictos y Seguros)
+ONPE 2026 — Proxy Local v18 (Filtro Anti-Fuga por Actas Totales)
 Uso:  python3 onpe_proxy.py
 """
 
@@ -21,7 +21,7 @@ EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccio
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# Diccionario Fijo de Ubigeos (Las 25 regiones oficiales)
+# Diccionario Fijo de Ubigeos
 UBIGEOS = {
     "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
     "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
@@ -34,7 +34,7 @@ UBIGEOS = {
     "250000": "Ucayali"
 }
 
-# Solo URLs estrictas, sin parámetros "TODOS" que confundan al servidor
+# Variantes de URL para evadir errores del balanceador de la ONPE
 URL_VARIANTS = [
     (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={{}}",
      f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={{}}"),
@@ -65,7 +65,10 @@ _lock  = threading.Lock()
 _is_refreshing = False
 
 def _get_json(url, retries=1):
-    req = urllib.request.Request(url, headers=HEADERS)
+    sep = "&" if "?" in url else "?"
+    cb_url = f"{url}{sep}_={int(time.time()*1000)}"
+    
+    req = urllib.request.Request(cb_url, headers=HEADERS)
     for attempt in range(retries + 1):
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
@@ -166,13 +169,12 @@ def fetch_region_worker(ubigeo, nombre):
 
         if not cands: continue
         
-        total_votos = sum(c["votos"] for c in cands)
-        # Umbral seguro: Si una provincia marca más de 4M de votos, es el total nacional colado.
-        if total_votos > 4000000 and ubigeo != "150000": 
+        # VALIDACIÓN ANTI-FUGA INFALIBLE: 
+        # El total nacional de actas es ~92,766. Ninguna región supera las 40,000.
+        # Si devuelve > 80,000 actas, es el consolidado nacional de ONPE colado.
+        if avance.get("actasTotales", 0) > 80000:
             continue
             
-        if total_votos == 0: continue
-
         return {
             "nombre":    nombre.title(),
             "pctActas":  avance.get("pctActas", 0),
@@ -219,7 +221,7 @@ def fetch_onpe():
         final_regs_dict = {r["nombre"]: r for r in old_regs}
         for r in regiones: final_regs_dict[r["nombre"]] = r 
         result["regiones"] = sorted(final_regs_dict.values(), key=lambda x: x["nombre"])
-        print(f"  ✓ Regiones integradas → {len(result['regiones'])}/25")
+        print(f"  ✓ Regiones listas → {len(result['regiones'])}/25")
 
     result["fuente"] = ("api_onpe" if ok_count >= 2 else "api_onpe_parcial" if ok_count == 1 else "respaldo_local")
     result["timestamp"] = datetime.now(timezone.utc).isoformat()
@@ -247,7 +249,7 @@ def _do_refresh():
         data = fetch_onpe()
         with _lock: _cache = data
         _save_cache(data)
-    except Exception as e:
+    except Exception:
         pass
     finally:
         _is_refreshing = False

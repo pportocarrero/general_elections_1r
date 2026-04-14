@@ -388,7 +388,6 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 
 </div>
 <script>
-// El proxy va vacío si se despliega en web/Render.
 const PROXY  = "";
 const COLORS = [
   "#185FA5","#A32D2D","#3B6D11","#854F0B","#534AB7",
@@ -1056,7 +1055,7 @@ function renderRegDet() {
 }
 
 // ══════════════════════════════════════════════════════════
-//  PROYECCIÓN MEJORADA (Cálculo Nacional Independiente)
+//  PROYECCIÓN MEJORADA (Con Consolidado Inferior)
 // ══════════════════════════════════════════════════════════
 let projActive = new Set([0,1,2,3,4,5]); 
 
@@ -1100,6 +1099,13 @@ function renderProyeccion() {
 
   // ── Filas de la Tabla Regional ──
   let regsConDatos = 0;
+  let sumVotosCont = 0, sumVotosFalt = 0;
+  let sumCandActual = {}, sumCandProy = {};
+  
+  activeCands.forEach(c => { 
+      sumCandActual[c.match] = 0; 
+      sumCandProy[c.match] = 0; 
+  });
 
   const rows = regs.map(r => {
     const pctAc = +r.pctActas || 0;
@@ -1108,9 +1114,15 @@ function renderProyeccion() {
 
     if (pctAc > 0) regsConDatos++;
 
+    sumVotosCont += totalVotos;
+    sumVotosFalt += vFalt;
+
     const tdActual = activeCands.map(cand => {
       const cr = _findCand(r.candidatos||[], cand);
       const v = +(cr?.votos||0), p = +(cr?.pct||0);
+      
+      sumCandActual[cand.match] += v;
+      
       return `<td class="proj-td">
         ${v>0 ? v.toLocaleString("es-PE") : "–"}
         ${p>0 ? `<span class="proj-badge" style="background:${cand.color}22;color:${cand.color}">${p.toFixed(1)}%</span>` : ""}
@@ -1122,6 +1134,8 @@ function renderProyeccion() {
       const pct = +(cr?.pct||0) / 100;
       const vExtra = Math.round(vFalt * pct);
       const total  = +(cr?.votos||0) + vExtra;
+      
+      sumCandProy[cand.match] += total;
       
       if (pctAc>0 && pctAc<99.9) {
           return `<td class="proj-td" style="font-weight:600;color:${cand.color}">
@@ -1150,13 +1164,25 @@ function renderProyeccion() {
     </tr>`;
   }).join("");
 
-  document.getElementById("projBody").innerHTML = rows;
+  // ── Consolidado final (El TFOOT que pediste) ──
+  let tfootHtml = `<tr class="proj-tr" style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
+    <td class="proj-td" style="text-align:left">TOTAL REGIONES LISTADAS (${regsConDatos})</td>
+    <td class="proj-td">–</td>
+    <td class="proj-td">${sumVotosCont.toLocaleString("es-PE")}</td>
+    <td class="proj-td" style="color:var(--amber)">${sumVotosFalt.toLocaleString("es-PE")}</td>
+  `;
+  
+  activeCands.forEach(cand => {
+      tfootHtml += `<td class="proj-td">${sumCandActual[cand.match].toLocaleString("es-PE")}</td>`;
+      tfootHtml += `<td class="proj-td" style="color:${cand.color}">${sumCandProy[cand.match].toLocaleString("es-PE")}</td>`;
+  });
+  tfootHtml += `</tr>`;
+
+  document.getElementById("projBody").innerHTML = rows + tfootHtml;
   document.getElementById("projCoverage").textContent =
     ` · ${regsConDatos}/${regs.length} regiones con datos`;
 
   // ── Proyección Nacional Independiente ──
-  // En vez de sumar las filas (que podrían estar incompletas), 
-  // proyectamos sobre el 100% de la DATA Nacional de ONPE.
   const pctNac = +(DATA.pctActas || 0);
   const totalValidosNac = +(DATA.votosValidos || 0);
   const vFaltNac = (pctNac > 0 && pctNac < 100) ? Math.round(totalValidosNac * (100 - pctNac) / pctNac) : 0;
@@ -1168,7 +1194,7 @@ function renderProyeccion() {
     const pctReal = natReal ? (+natReal.pct / 100) : 0;
     
     const vExtra = Math.round(vFaltNac * pctReal);
-    const proy   = actual + vExtra; // Imposible que sea menor que el actual.
+    const proy   = actual + vExtra; 
     
     const pctA   = (pctReal * 100).toFixed(3) + "% s/válidos";
     const pctP   = totalFinal>0 ? ((proy/totalFinal)*100).toFixed(2)+"%" : "–";
