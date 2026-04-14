@@ -171,6 +171,27 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 .hm-cell { font-weight: 700; color: #111 !important; transition: filter 0.2s; cursor: default; }
 .hm-cell:hover { filter: brightness(0.9); }
 
+/* Proyección */
+.proj-tog{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;
+          padding:4px 11px;border-radius:20px;border:1.5px solid;cursor:pointer;
+          transition:opacity .15s,background .15s;user-select:none}
+.proj-tog.off{opacity:.3}
+.proj-th{font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;
+         letter-spacing:.04em;padding:6px 8px;border-bottom:2px solid var(--border);
+         background:var(--surface2);text-align:right;white-space:nowrap}
+.proj-th:first-child{text-align:left}
+.proj-td{padding:7px 8px;border-bottom:1px solid var(--border);vertical-align:middle;
+         text-align:right;font-variant-numeric:tabular-nums;font-size:12px}
+.proj-td:first-child{text-align:left;font-weight:600}
+.proj-tr:hover .proj-td{background:var(--surface2)}
+.proj-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;
+            border-radius:10px;margin-left:3px}
+.proj-nat-card{background:var(--surface2);border-radius:8px;padding:10px 12px;
+               border-top:3px solid}
+.proj-nat-lbl{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:1px}
+.proj-nat-val{font-size:17px;font-weight:700}
+.proj-nat-sub{font-size:11px;color:var(--muted);margin-top:1px}
+
 /* Footer Styling */
 .app-footer {
   text-align: center;
@@ -251,6 +272,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
   <button class="tab active" onclick="showSec('nacional',this)">Nacional</button>
   <button class="tab"        onclick="showSec('evolucion',this)">Evolución</button>
   <button class="tab"        onclick="showSec('regiones',this)">Regiones</button>
+  <button class="tab"        onclick="showSec('proyeccion',this)">Proyección</button>
 </div>
 
 <div id="sec-nacional" class="sec active">
@@ -335,6 +357,32 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
   </div>
 </div>
 
+<div id="sec-proyeccion" class="sec">
+  <!-- Toolbar de candidatos -->
+  <div class="panel full" style="margin-bottom:1rem">
+    <div class="ptitle">Proyección de votos — tendencia actual extrapolada al 100% de actas</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
+      Para cada región: votos ya contabilizados, votos faltantes estimados, y proyección al 100% de actas
+      asumiendo que la distribución actual se mantiene. Selecciona o deselecciona candidatos con los botones.
+    </p>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
+                background:var(--surface2);border-radius:var(--r);margin-bottom:1rem" id="projToggles"></div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px" id="projTable">
+        <thead id="projHead"></thead>
+        <tbody id="projBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <!-- Proyección nacional -->
+  <div class="panel full" id="projNational" style="display:none">
+    <div class="ptitle">🇵🇪 Proyección nacional — suma de todas las regiones con datos
+      <span style="font-size:11px;color:var(--faint);font-weight:400;text-transform:none" id="projCoverage"></span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px" id="projNatGrid"></div>
+  </div>
+</div>
+
 <div id="mapTooltip" class="map-tooltip"></div>
 
 <div class="app-footer">
@@ -352,30 +400,38 @@ const COLORS = [
 
 const EVO = {
   labels: ["0.008%","10.400%","21.700%","39.400%","42.800%","53.886%"],
+  // Los 6 candidatos fijos de interés — índices alineados con COLORS[]
   top7: [
-    {n:"Fujimori",     p:"Fuerza Popular",          c:"#A32D2D", 
+    {n:"Fujimori",     p:"Fuerza Popular",     c:"#A32D2D",
      d:[10.7, 16.7, 16.9, 17.0, 17.1, 16.961],
      v:[150, 200000, 450000, 1000000, 1250000, 1670250]},
-    {n:"López Aliaga", p:"Renovación Popular",       c:"#185FA5", 
+    {n:"López Aliaga", p:"Renovación Popular", c:"#185FA5",
      d:[22.7, 22.0, 21.1, 20.8, 20.5, 14.499],
      v:[300, 250000, 500000, 1050000, 1300000, 1427769]},
-    {n:"Nieto",        p:"Buen Gobierno",            c:"#3B6D11", 
+    {n:"Nieto",        p:"Buen Gobierno",      c:"#3B6D11",
      d:[17.7, 16.1, 16.1, 15.7, 15.6, 12.786],
      v:[200, 180000, 400000, 850000, 1000000, 1259068]},
-    {n:"Belmont",      p:"Cívico Obras",             c:"#534AB7", 
+    {n:"Belmont",      p:"Cívico Obras",       c:"#534AB7",
      d:[ 0.0,  8.3,  8.5,  8.6,  8.6,  9.857],
      v:[  0,  80000, 200000, 550000, 750000, 970658]},
-    {n:"Álvarez",      p:"País para Todos",          c:"#854F0B", 
+    {n:"Álvarez",      p:"País para Todos",    c:"#854F0B",
      d:[11.0,  8.8,  8.9,  8.9,  9.0,  8.446],
      v:[100,  90000, 220000, 600000, 800000, 831675]},
-    {n:"Sánchez",      p:"Juntos por el Perú",       c:"#0F6E56", 
+    {n:"Sánchez",      p:"Juntos por el Perú", c:"#0F6E56",
      d:[ 5.0,  5.5,  6.0,  6.5,  6.8,  8.013],
      v:[ 50,  60000, 150000, 450000, 600000, 789058]},
-    {n:"López Chau",   p:"Ahora Nación",             c:"#8B6900", 
-     d:[ 7.0,  6.8,  6.5,  6.5,  6.8,  7.621],
-     v:[ 80,  70000, 160000, 420000, 580000, 750464]},
   ]
 };
+
+// Los 6 candidatos fijos para proyección (en el mismo orden que EVO.top7)
+const TOP6 = [
+  {nombre:"Keiko Fujimori",      partido:"Fuerza Popular",     clave:"Fujimori",     color:"#A32D2D"},
+  {nombre:"Rafael López Aliaga", partido:"Renovación Popular", clave:"López Aliaga", color:"#185FA5"},
+  {nombre:"Jorge Nieto",         partido:"Buen Gobierno",      clave:"Nieto",        color:"#3B6D11"},
+  {nombre:"Ricardo Belmont",     partido:"Cívico Obras",       clave:"Belmont",      color:"#534AB7"},
+  {nombre:"Carlos Álvarez",      partido:"País para Todos",    clave:"Álvarez",      color:"#854F0B"},
+  {nombre:"Roberto Sánchez",     partido:"Juntos por el Perú", clave:"Sánchez",      color:"#0F6E56"},
+];
 
 let DATA = null, selReg = null;
 let donutChart = null, evoChart = null, evoVotesChart = null;
@@ -438,18 +494,16 @@ async function silentPoll() {
 
 function addEvoPoint(d) {
   const pct = +d.pctActas;
-  const lastLabel = EVO.labels[EVO.labels.length - 1]; 
-  
+  const lastLabel = EVO.labels[EVO.labels.length - 1];
   if (!pct || pct <= +lastLabel.replace('%','') + 0.001) return;
-  const lbl = pct.toFixed(3)+"%"; 
-  EVO.labels.push(lbl);
+  EVO.labels.push(pct.toFixed(3)+"%");
   EVO.top7.forEach((cm) => {
+    // Buscar por apellido/nombre en los candidatos de la ONPE
     const c = (d.candidatos || []).find(x =>
-      x.partido.toUpperCase().includes(cm.p.toUpperCase().split(" ")[0]) ||
-      x.nombre.toLowerCase().includes(cm.n.toLowerCase().split(" ")[cm.n.toLowerCase().split(" ").length - 1])
+      x.nombre.toLowerCase().includes(cm.n.toLowerCase().split(" ").at(-1))
     );
-    cm.d.push(c ? +c.pct : (cm.d[cm.d.length - 1]||0));
-    cm.v.push(c ? +c.votos : (cm.v[cm.v.length - 1]||0));
+    cm.d.push(c ? +c.pct   : (cm.d.at(-1)||0));
+    cm.v.push(c ? +c.votos : (cm.v.at(-1)||0));
   });
 }
 
@@ -612,7 +666,7 @@ function renderEvo() {
   const ttd=isDark?"#444":"#ddd";
 
   const labels = EVO.labels;
-  const plotCands = EVO.top7.slice(0, 6);
+  const plotCands = EVO.top7; // exactamente los 6 candidatos fijos
 
   document.getElementById("evoLeg").innerHTML = plotCands.map(m=>
     `<div class="leg">
@@ -738,7 +792,7 @@ window.toggleHmFilter = (cb) => {
 
 function renderEvoHeatmap() {
   const labels = EVO.labels;
-  const heatmapCandsPool = EVO.top7.slice(0, 6); 
+  const heatmapCandsPool = EVO.top7; // los 6 candidatos fijos
   
   if (!hmSelectedCands) {
       hmSelectedCands = EVO.top7.slice(1, 6).map(c => c.n); 
@@ -1003,12 +1057,148 @@ window.showSec = (id,btn) => {
   document.querySelectorAll(".tabs .tab").forEach(b=>b.classList.remove("active"));
   document.getElementById("sec-"+id).classList.add("active");
   btn.classList.add("active");
-  
-  if (id==="evolucion") {
-      renderEvo();
-      renderEvoHeatmap();
+  if (id==="evolucion")   { renderEvo(); renderEvoHeatmap(); }
+  if (id==="regiones")    renderMapAndRegions();
+  if (id==="proyeccion")  renderProyeccion();
+};
+
+// ══════════════════════════════════════════════════════════
+//  PROYECCIÓN
+// ══════════════════════════════════════════════════════════
+let projActive = new Set([0,1,2,3,4,5]); // todos los 6 activos por defecto
+
+function renderProyeccion() {
+  const regs = (DATA && DATA.regiones) || [];
+
+  // Toggles
+  const togContainer = document.getElementById("projToggles");
+  if (!togContainer._built) {
+    togContainer._built = true;
+    togContainer.innerHTML = TOP6.map((c,i) =>
+      `<div class="proj-tog" id="ptog-${i}"
+            style="color:${c.color};border-color:${c.color};background:${c.color}22"
+            onclick="toggleProj(${i},'${c.color}')">
+         <div class="ldot" style="background:${c.color}"></div>${c.nombre.split(" ").at(-1)}
+       </div>`
+    ).join("");
   }
-  if (id==="regiones")  renderMapAndRegions();
+
+  if (!regs.length) {
+    document.getElementById("projBody").innerHTML =
+      `<tr><td colspan="20" style="color:var(--faint);padding:1.5rem;text-align:center">
+         Sin datos regionales — pulsa ↻ Actualizar
+       </td></tr>`;
+    document.getElementById("projNational").style.display = "none";
+    return;
+  }
+
+  const activeCands = TOP6.filter((_,i) => projActive.has(i));
+  if (!activeCands.length) return;
+
+  // ── Header ──
+  const thStyle = 'class="proj-th"';
+  document.getElementById("projHead").innerHTML = `<tr>
+    <th ${thStyle} style="text-align:left">Región</th>
+    <th ${thStyle}>Actas%</th>
+    <th ${thStyle}>V. contab.</th>
+    <th ${thStyle}>V. faltan</th>
+    ${activeCands.map(c=>`<th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small>actual</small></th>`).join("")}
+    ${activeCands.map(c=>`<th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small style="color:var(--amber)">proyect.</small></th>`).join("")}
+  </tr>`;
+
+  // ── Filas + acumuladores nacionales ──
+  const natActual  = {}, natProy = {};
+  activeCands.forEach(c => { natActual[c.clave]=0; natProy[c.clave]=0; });
+  let totalContNac=0, totalFaltNac=0, regsConDatos=0;
+
+  const rows = regs.map(r => {
+    const pctAc = +r.pctActas || 0;
+    const totalVotos = (r.candidatos||[]).reduce((s,c)=>s+(+c.votos||0), 0);
+    // Votos faltantes: proyectar linealmente desde % contabilizado
+    const vFalt = (pctAc > 0 && pctAc < 99.9)
+      ? Math.round(totalVotos * (100 - pctAc) / pctAc) : 0;
+
+    totalContNac += totalVotos;
+    totalFaltNac += vFalt;
+    if (pctAc > 0) regsConDatos++;
+
+    const tdActual = activeCands.map(cand => {
+      const cr = (r.candidatos||[]).find(x => x.nombre.toLowerCase().includes(cand.clave.toLowerCase().split(" ").at(-1)));
+      const v = +(cr?.votos||0), p = +(cr?.pct||0);
+      natActual[cand.clave] += v;
+      return `<td class="proj-td">
+        ${v>0 ? v.toLocaleString("es-PE") : "–"}
+        ${p>0 ? `<span class="proj-badge" style="background:${cand.color}22;color:${cand.color}">${p.toFixed(1)}%</span>` : ""}
+      </td>`;
+    }).join("");
+
+    const tdProy = activeCands.map(cand => {
+      const cr = (r.candidatos||[]).find(x => x.nombre.toLowerCase().includes(cand.clave.toLowerCase().split(" ").at(-1)));
+      const pct = +(cr?.pct||0) / 100;
+      const vExtra = Math.round(vFalt * pct);
+      const total  = +(cr?.votos||0) + vExtra;
+      natProy[cand.clave] += total;
+      return `<td class="proj-td" style="font-weight:600;color:${cand.color}">
+        ${pctAc>0&&pctAc<99.9 ? total.toLocaleString("es-PE") : "–"}
+      </td>`;
+    }).join("");
+
+    return `<tr class="proj-tr">
+      <td class="proj-td">${r.nombre}</td>
+      <td class="proj-td">${pctAc>0?pctAc.toFixed(1)+"%":"–"}</td>
+      <td class="proj-td">${totalVotos>0?totalVotos.toLocaleString("es-PE"):"–"}</td>
+      <td class="proj-td" style="color:var(--amber)">${vFalt>0?vFalt.toLocaleString("es-PE"):"–"}</td>
+      ${tdActual}${tdProy}
+    </tr>`;
+  }).join("");
+
+  document.getElementById("projBody").innerHTML = rows;
+  document.getElementById("projCoverage").textContent =
+    ` · ${regsConDatos}/${regs.length} regiones con datos`;
+
+  // ── Proyección nacional ──
+  const totalFinal = totalContNac + totalFaltNac;
+  const natCards = activeCands.map(c => {
+    const actual = natActual[c.clave]||0;
+    const proy   = natProy[c.clave]||0;
+    const pctA   = totalContNac>0 ? ((actual/totalContNac)*100).toFixed(2)+"%" : "–";
+    const pctP   = totalFinal>0   ? ((proy/totalFinal)*100).toFixed(2)+"%" : "–";
+    return `<div class="proj-nat-card" style="border-top-color:${c.color}">
+      <div class="proj-nat-lbl">${c.nombre}</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${c.partido}</div>
+      <div class="proj-nat-lbl">Votos actuales</div>
+      <div class="proj-nat-val">${actual>0?actual.toLocaleString("es-PE"):"–"}</div>
+      <div class="proj-nat-sub">${pctA} de votos contab.</div>
+      <div class="proj-nat-lbl" style="margin-top:8px">Proyectado 100%</div>
+      <div class="proj-nat-val" style="color:${c.color}">${proy>0?proy.toLocaleString("es-PE"):"–"}</div>
+      <div class="proj-nat-sub">${pctP} del total est.</div>
+    </div>`;
+  }).join("");
+
+  document.getElementById("projNatGrid").innerHTML = natCards;
+  document.getElementById("projNational").style.display = "block";
+}
+
+window.toggleProj = (i, color) => {
+  if (projActive.has(i)) projActive.delete(i); else projActive.add(i);
+  // Solo actualizar tabla y cards, no los toggles
+  _renderProjTable();
+};
+
+function _renderProjTable() {
+  // Actualiza visual de todos los toggles
+  TOP6.forEach((c,i) => {
+    const el = document.getElementById(`ptog-${i}`);
+    if (!el) return;
+    const on = projActive.has(i);
+    el.classList.toggle("off", !on);
+    el.style.background = on ? c.color+"22" : "transparent";
+  });
+  // Re-renderizar solo tabla + cards sin tocar los botones
+  const savedBuilt = document.getElementById("projToggles")._built;
+  document.getElementById("projToggles")._built = true; // no reconstruir toggles
+  renderProyeccion();
+  document.getElementById("projToggles")._built = savedBuilt;
 };
 
 setAlert("info","⏳ Conectando al servidor...");

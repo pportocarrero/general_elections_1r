@@ -89,33 +89,37 @@ def _unwrap(raw):
     return raw
 
 def parse_avance(raw_totales):
+    """
+    Estructura real confirmada de EP_TOTALES:
+      data.actasContabilizadas = 53.886   <- YA ES el porcentaje (float <= 100)
+      data.contabilizadas      = 49988    <- valor absoluto
+      data.totalActas          = 92766
+      data.enviadasJee         = 155      <- absoluto
+      data.pendientesJee       = 42623    <- actas pendientes
+      data.totalVotosEmitidos  = 11488641
+      data.totalVotosValidos   = 9847379
+      data.participacionCiudadana = 42.044
+    Para endpoints regionales la estructura puede variar ligeramente.
+    """
     if not raw_totales: return {}
     d = _unwrap(raw_totales)
     if isinstance(d, list):
-        if len(d) > 0: d = d[0]
-        else: return {}
+        d = d[0] if d else {}
     if not isinstance(d, dict): return {}
 
-    # Corregido: Identificar si "actasContabilizadas" trae el % o el valor absoluto
-    pct = float(d.get("porcentajeActasContabilizadas") or d.get("porcentajeAvanceMesas") or 0)
-    
-    cont = d.get("contabilizadas")
-    if cont is None:
-        ac = d.get("actasContabilizadas", 0)
-        # Si es menor a 100 y tiene decimales, es el porcentaje. Si no, es el absoluto.
-        if isinstance(ac, float) and ac <= 100.0:
-            pct = pct or ac
-            cont = 0
-        else:
-            cont = ac
-            
-    cont = int(cont or 0)
-    tot  = int(d.get("totalActas") or 92766)
+    # "actasContabilizadas" es el % cuando viene del EP_TOTALES nacional/regional
+    # "contabilizadas" es el absoluto
+    pct  = float(d.get("actasContabilizadas") or
+                 d.get("porcentajeActasContabilizadas") or
+                 d.get("porcentajeAvanceMesas") or 0)
+    cont = int(d.get("contabilizadas") or d.get("mesasContabilizadas") or 0)
+    tot  = int(d.get("totalActas") or d.get("totalMesas") or 92766)
     jee  = int(d.get("enviadasJee") or d.get("actasEnviadasJee") or 0)
     pend = int(d.get("pendientesJee") or d.get("actasPendientesJee") or max(0, tot - cont - jee))
 
-    if pct == 0 and tot > 0:
-        pct = (cont / tot) * 100.0
+    # Fallback: calcular % si no vino directo
+    if pct == 0 and tot > 0 and cont > 0:
+        pct = round((cont / tot) * 100.0, 3)
 
     return {
         "pctActas": round(pct, 3), "actasContabilizadas": cont, "actasTotales": tot,
@@ -168,34 +172,46 @@ def _fmt_nombre(nombre_mayus):
     return nombre_mayus.title()
 
 def fetch_region_worker(ubigeo, nombre):
-    """Prueba múltiples URLs hasta obtener datos limpios y verdaderos de la región"""
-    for url_part_tpl, url_tot_tpl in URL_VARIANTS:
-        url_part = url_part_tpl.format(ubigeo)
-        url_tot  = url_tot_tpl.format(ubigeo)
-        
-        raw_part = _get_json(url_part)
-        raw_tot  = _get_json(url_tot)
-        
-        cands, _, _ = parse_candidatos(raw_part)
-        avance = parse_avance(raw_tot)
+    """
+    Prueba múltiples variantes de URL y formatos de ubigeo.
+    ONPE puede esperar el ubigeo con o sin ceros iniciales:
+      "040000" -> int parse -> "40000"  (más probable)
+      "040000" -> tal cual
+    """
+    # Generar variantes del código: con y sin ceros iniciales
+    cod_int = str(int(ubigeo))   # "040000" -> "40000", "150000" -> "150000"
+    ubigeo_variants = [cod_int, ubigeo] if cod_int != ubigeo else [ubigeo]
 
-        if not cands: continue # URL falló, intentar la siguiente
-        
-        # VALIDACIÓN ANTI-FUGA: Si una región reporta más de 5M votos (imposible para provincias)
-        # significa que la URL de ONPE devolvió la base nacional por error.
-        total_votos = sum(c["votos"] for c in cands)
-        if total_votos > 5000000 and ubigeo != "150000": # 150000 = Lima
-            continue # Fuga detectada, intentar la siguiente URL
-            
-        return {
-            "nombre": nombre.title(),
-            "pctActas": avance.get("pctActas", 0),
-            "lider": cands[0]["nombre"],
-            "pctLider": cands[0]["pct"],
-            "candidatos": cands
-        }
-        
-    return None # Si fallan las 3 variantes, se asume sin datos temporales
+    for url_part_tpl, url_tot_tpl in URL_VARIANTS:
+        for cod in ubigeo_variants:
+            url_part = url_part_tpl.format(cod)
+            url_tot  = url_tot_tpl.format(cod)
+
+            raw_part = _get_json(url_part)
+            raw_tot  = _get_json(url_tot)
+
+            cands, _, _ = parse_candidatos(raw_part)
+            avance = parse_avance(raw_tot)
+
+            if not cands:
+                continue
+
+            # ANTI-FUGA: región con >5M votos implica que la ONPE devolvió datos nacionales
+            total_votos = sum(c["votos"] for c in cands)
+            if total_votos > 5_000_000 and ubigeo != "150000":
+                continue
+
+            return {
+                "nombre":   nombre.title(),
+                "pctActas": avance.get("pctActas", 0),
+                "actasCont":avance.get("actasContabilizadas", 0),
+                "actasTot": avance.get("actasTotales", 0),
+                "lider":    cands[0]["nombre"],
+                "pctLider": cands[0]["pct"],
+                "candidatos": cands,
+            }
+
+    return None  # Todas las variantes fallaron
 
 def fetch_onpe():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")
