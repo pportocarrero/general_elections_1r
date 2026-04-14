@@ -343,10 +343,19 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
   <div class="panel full" style="margin-bottom:1rem">
     <div class="ptitle">
       <span>Simulador de Momentum de Votos Faltantes</span>
-      <button class="btn purple" onclick="applyHeatmapToSim()">🔥 Usar Momentum del Mapa de Calor</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn purple" onclick="applyHeatmapToSim()">🔥 Usar última tasa log. (Mapa de Calor)</button>
+        <button class="btn" onclick="resetSim()" style="font-size:11px">↺ Resetear</button>
+      </div>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1.5rem;line-height:1.7">
-      Ajusta qué tan rápido o lento crecerá cada candidato en lo que queda del escrutinio nacional. Un modificador de <strong>+10%</strong> significa que el candidato captará un 10% más de votos faltantes de lo que su tendencia actual proyecta.
+      Define para cada candidato qué porcentaje de los <strong>votos faltantes</strong> captará,
+      en relación a su share actual en esa región.<br>
+      <strong>0%</strong> = proyección lineal pura (tendencia actual). 
+      <strong>+100%</strong> = duplica su captura de votos faltantes.
+      <strong>–50%</strong> = captará la mitad de lo que indica su tendencia actual.<br>
+      El botón <em>🔥 Usar última tasa log.</em> pre-carga el retorno logarítmico 
+      <code>ln(Vt / Vt-1) × 100</code> del último corte disponible en el Mapa de Calor.
     </p>
     
     <div class="sim-grid" id="simControls"></div>
@@ -1012,10 +1021,17 @@ function calculateProjectionData(simMultipliers = null) {
         const aC = +(r.actasCont || 0);
         const aT = +(r.actasTot || 0);
         const pctAc = aT > 0 ? (aC / aT * 100) : (+r.pctActas || 0);
-        const vValidos = +(r.vValidos || 0); // Extraído real de ONPE
+        let vValidos = +(r.vValidos || 0);
+
+        // Anti-fuga frontend: si vValidos es nacional (>5M) para región no-Lima Metro,
+        // usar la suma de votos de candidatos como aproximación
+        const sumVotosCands = (r.candidatos||[]).reduce((s,c) => s + (+c.votos||0), 0);
+        const isLimaMetro = r.nombre.toLowerCase().includes("lima metro");
+        if (vValidos > 5_000_000 && !isLimaMetro) vValidos = sumVotosCands;
+        if (vValidos === 0 && sumVotosCands > 0) vValidos = sumVotosCands;
         
-        // Faltantes exactos sobre votos válidos
-        let vFalt = (aC > 0 && aT > aC) ? Math.round(vValidos * (aT - aC) / aC) : 0;
+        // Votos faltantes: desde % de avance de actas
+        let vFalt = (pctAc > 0 && pctAc < 99.9) ? Math.round(vValidos * (100 - pctAc) / pctAc) : 0;
         vFalt = Math.max(0, vFalt);
 
         sumVotosCont += vValidos;
@@ -1187,54 +1203,87 @@ window.exportTableToCSV = (filename) => {
 }
 
 // ══════════════════════════════════════════════════════════
-//  NUEVO: SIMULACIÓN INTERACTIVA
+//  SIMULACIÓN DINÁMICA CON TASAS LOGARÍTMICAS
+//  Los sliders controlan el % de captura de votos faltantes
+//  relativo al share actual del candidato. El botón 🔥 pre-carga
+//  el retorno logarítmico ln(Vt/Vt-1)×100 del último corte del EVO.
 // ══════════════════════════════════════════════════════════
+
+function _calcHeatmapRates() {
+    // Retorno logarítmico del último corte: ln(Vt / Vt-1) × 100
+    const n = EVO.labels.length;
+    const rates = {};
+    TOP6.forEach(c => {
+        const cd = EVO.top7.find(e => e.match === c.match);
+        if (cd && n >= 2) {
+            const prev = cd.v[n - 2] || 0;
+            const curr = cd.v[n - 1] || 0;
+            rates[c.match] = (prev > 0 && curr > 0) ? Math.log(curr / prev) * 100 : 0;
+        } else { rates[c.match] = 0; }
+    });
+    return rates;
+}
+
 function renderSimulacion() {
     const sContainer = document.getElementById("simControls");
-    if (!sContainer.innerHTML) {
-        sContainer.innerHTML = TOP6.map(c => `
-            <div class="sim-card" style="border-color:${c.color}">
-                <div class="sim-cname">${c.nombre} <span class="sim-heatval" id="shval-${c.match}">–</span></div>
-                <div style="font-size:10px;color:var(--faint)">${c.partido}</div>
-                <div class="sim-slider-row">
-                    <input type="range" min="-50" max="150" value="0" step="0.5" class="sim-slider" 
-                           id="slider-${c.match}" style="accent-color:${c.color}" 
-                           oninput="updateSimVal('${c.match}', this.value)">
-                    <input type="text" class="sim-input" id="inp-${c.match}" value="0.0%" readonly>
-                </div>
+    const heatRates = _calcHeatmapRates();
+
+    sContainer.innerHTML = TOP6.map(c => {
+        const rate = heatRates[c.match] || 0;
+        const rateColor = rate > 1 ? '#2e7d32' : rate < -1 ? '#c62828' : c.color;
+        const rateStr = (rate > 0 ? "+" : "") + rate.toFixed(2) + "% (ln)";
+        const curVal = simMultipliers[c.match] || 0;
+        return `
+        <div class="sim-card" style="border-color:${c.color}">
+            <div class="sim-cname" style="font-size:12px">
+                ${c.nombre}
+                <span class="sim-heatval" id="shval-${c.match}"
+                      style="font-size:10px;color:${rateColor}">tasa: ${rateStr}</span>
             </div>
-        `).join("");
-    }
+            <div style="font-size:10px;color:var(--faint);margin-bottom:4px">${c.partido}</div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">
+                Modificador sobre share de votos faltantes:
+            </div>
+            <div class="sim-slider-row">
+                <span style="font-size:10px;color:var(--faint);min-width:28px;text-align:right">–50%</span>
+                <input type="range" min="-50" max="200" value="${curVal.toFixed(1)}" step="0.5"
+                       class="sim-slider" id="slider-${c.match}" style="accent-color:${c.color}"
+                       oninput="updateSimVal('${c.match}', this.value)">
+                <span style="font-size:10px;color:var(--faint);min-width:32px">+200%</span>
+                <input type="text" class="sim-input" id="inp-${c.match}"
+                       value="${curVal > 0 ? '+' : ''}${curVal.toFixed(1)}%" readonly>
+            </div>
+            <div style="font-size:10px;color:var(--faint);margin-top:4px">
+                0% = lineal · +100% = doble captura · –50% = mitad
+            </div>
+        </div>`;
+    }).join("");
 
     _drawSimChart();
 }
 
 window.updateSimVal = (match, val) => {
-    document.getElementById(`inp-${match}`).value = (+val > 0 ? "+" : "") + (+val).toFixed(1) + "%";
-    simMultipliers[match] = +val;
+    const numVal = +val;
+    const el = document.getElementById(`inp-${match}`);
+    if (el) el.value = (numVal > 0 ? "+" : "") + numVal.toFixed(1) + "%";
+    simMultipliers[match] = numVal;
     _drawSimChart();
 };
 
 window.applyHeatmapToSim = () => {
-    // Leemos el crecimiento del último punto desde el arreglo EVO
-    const labels = EVO.labels;
-    if (labels.length < 2) return;
-    
+    // Pre-carga ln(Vt/Vt-1)×100 del último corte del Mapa de Calor
+    const heatRates = _calcHeatmapRates();
     TOP6.forEach(c => {
-        const candData = EVO.top7.find(e => e.match === c.match);
-        if (candData) {
-            let prev = candData.v[labels.length - 2];
-            let curr = candData.v[labels.length - 1];
-            let diff = 0;
-            if (prev > 0) diff = Math.log(curr / prev) * 100;
-            
-            // Limitamos entre -50 y +150 para el slider
-            diff = Math.max(-50, Math.min(150, diff));
-            
-            document.getElementById(`slider-${c.match}`).value = diff;
-            updateSimVal(c.match, diff);
-        }
+        const rate = Math.max(-50, Math.min(200, heatRates[c.match] || 0));
+        const sliderEl = document.getElementById(`slider-${c.match}`);
+        if (sliderEl) sliderEl.value = rate.toFixed(1);
+        updateSimVal(c.match, rate);
     });
+};
+
+window.resetSim = () => {
+    TOP6.forEach(c => { simMultipliers[c.match] = 0; });
+    renderSimulacion(); // re-renders sliders at 0
 };
 
 function _drawSimChart() {
