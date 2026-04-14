@@ -369,7 +369,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
       Para cada región: Votos actuales y la proyección final matemática al 100% de actas. 
-      <strong>(La columna "Proyección Final" = Votos Actuales + Votos Faltantes).</strong>
+      <strong>(La columna "Proyección Final" = Votos Actuales + Votos Faltantes Estimados según la tendencia de la región).</strong>
     </p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
                 background:var(--surface2);border-radius:var(--r);margin-bottom:1rem" id="projToggles"></div>
@@ -404,7 +404,6 @@ const COLORS = [
   "#0F6E56","#8B6900","#5a2d82","#555","#333"
 ];
 
-// Identificamos a los candidatos por una palabra clave infalible en su PARTIDO
 const EVO = {
   labels: ["0.008%","10.400%","21.700%","39.400%","42.800%","53.886%"],
   top7: [
@@ -1064,7 +1063,7 @@ function renderRegDet() {
 }
 
 // ══════════════════════════════════════════════════════════
-//  PROYECCIÓN MEJORADA CON AUTO-COMPLETADO Y EXCEL
+//  PROYECCIÓN MEJORADA CON AUTO-COMPLETADO MATEMÁTICO 100%
 // ══════════════════════════════════════════════════════════
 let projActive = new Set([0,1,2,3,4,5]); 
 
@@ -1111,24 +1110,25 @@ function renderProyeccion() {
   let totalMissingVotos = 0;
   
   (DATA.candidatos || []).forEach(c => {
-      let sumRegVotos = regs.reduce((s, r) => {
+      let sumRegVotosCand = regs.reduce((s, r) => {
           let cr = r.candidatos.find(x => x.nombre === c.nombre);
           return s + (cr ? +cr.votos : 0);
       }, 0);
       
-      let mVotos = Math.max(0, c.votos - sumRegVotos);
+      let mVotos = Math.max(0, c.votos - sumRegVotosCand);
       totalMissingVotos += mVotos;
       missingCands.push({
           nombre: c.nombre, partido: c.partido, votos: mVotos, pct: 0
       });
   });
 
+  // Solo inyectar la fila si de verdad faltan datos matemáticos del Extranjero o alguna región omitida
   if (totalMissingVotos > 0 || missingCont > 0) {
       missingCands.forEach(c => {
           c.pct = totalMissingVotos > 0 ? (c.votos / totalMissingVotos * 100) : 0;
       });
       regs.push({
-          nombre: "EXTRANJERO / OTROS (Auto-completado)",
+          nombre: "EXTRANJERO / OTROS (Auto-completado faltante)",
           pctActas: missingTot > 0 ? (missingCont / missingTot * 100) : 0,
           actasCont: missingCont,
           actasTot: missingTot,
@@ -1139,7 +1139,7 @@ function renderProyeccion() {
   // ── Header ──
   const thStyle = 'class="proj-th"';
   document.getElementById("projHead").innerHTML = `<tr>
-    <th ${thStyle} style="text-align:left">Región</th>
+    <th ${thStyle} style="text-align:left">Jurisdicción</th>
     <th ${thStyle}>Actas%</th>
     <th ${thStyle}>V. contab.</th>
     <th ${thStyle}>V. faltan</th>
@@ -1158,11 +1158,15 @@ function renderProyeccion() {
   });
 
   const rows = regs.map(r => {
-    const pctAc = +r.pctActas || 0;
+    // Para cálculo de proyección usamos actas numéricas para ser exactos
+    const aC = +(r.actasCont || 0);
+    const aT = +(r.actasTot || 0);
+    const pctAc = aT > 0 ? (aC / aT * 100) : (+r.pctActas || 0);
+    
     const totalVotos = (r.candidatos||[]).reduce((s,c)=>s+(+c.votos||0), 0);
     
-    // Candado matemático anti-negativos
-    let vFalt = (pctAc > 0 && pctAc < 100) ? Math.round(totalVotos * (100 - pctAc) / pctAc) : 0;
+    // Candado matemático estricto usando actas 
+    let vFalt = (aC > 0 && aT > aC) ? Math.round(totalVotos * (aT - aC) / aC) : 0;
     vFalt = Math.max(0, vFalt); 
 
     if (pctAc > 0) regsConDatos++;
@@ -1183,9 +1187,9 @@ function renderProyeccion() {
     const tdProy = activeCands.map(cand => {
       const cr = _findCand(r.candidatos||[], cand);
       const vActual = +(cr?.votos||0);
-      const pct = +(cr?.pct||0) / 100;
+      const candShare = totalVotos > 0 ? (vActual / totalVotos) : 0;
       
-      const vExtra = Math.max(0, Math.round(vFalt * pct));
+      const vExtra = Math.max(0, Math.round(vFalt * candShare));
       const total  = vActual + vExtra; 
       
       sumCandProy[cand.match] += total;
@@ -1208,7 +1212,7 @@ function renderProyeccion() {
         rowContent += tdActual[i] + tdProy[i];
     }
 
-    const bgStyle = r.nombre.includes("Auto-completado") ? 'style="background:rgba(0,0,0,0.02)"' : '';
+    const bgStyle = r.nombre.includes("Faltante") ? 'style="background:rgba(0,0,0,0.02)"' : '';
 
     return `<tr class="proj-tr" ${bgStyle}>
       <td class="proj-td" style="text-align:left">${r.nombre}</td>
@@ -1221,7 +1225,7 @@ function renderProyeccion() {
 
   // ── TFOOT (Consolidado final exacto) ──
   let tfootHtml = `<tr class="proj-tr" style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
-    <td class="proj-td" style="text-align:left">TOTAL NACIONAL</td>
+    <td class="proj-td" style="text-align:left">TOTAL NACIONAL (SUMATORIA EXACTA DE TABLA)</td>
     <td class="proj-td">${DATA.pctActas ? (+DATA.pctActas).toFixed(3)+"%" : "–"}</td>
     <td class="proj-td">${sumVotosCont.toLocaleString("es-PE")}</td>
     <td class="proj-td" style="color:var(--amber)">${sumVotosFalt.toLocaleString("es-PE")}</td>
@@ -1235,7 +1239,7 @@ function renderProyeccion() {
   document.getElementById("projBody").innerHTML = rows;
   document.getElementById("projFoot").innerHTML = tfootHtml;
   document.getElementById("projCoverage").textContent =
-    ` · Suma exacta de ${regsConDatos} regiones`;
+    ` · Suma matemática exacta de ${regsConDatos} jurisdicciones`;
 
   // ── Proyección Nacional KPI ──
   const totalFinal = sumVotosCont + sumVotosFalt;
@@ -1250,12 +1254,12 @@ function renderProyeccion() {
     return `<div class="proj-nat-card" style="border-top-color:${c.color}">
       <div class="proj-nat-lbl">${c.nombre}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${c.partido}</div>
-      <div class="proj-nat-lbl">Votos Actuales (Suma Exacta Tabla)</div>
+      <div class="proj-nat-lbl">Votos Actuales (Suma Tabla)</div>
       <div class="proj-nat-val">${actual>0?actual.toLocaleString("es-PE"):"–"}</div>
       <div class="proj-nat-sub">${pctA}</div>
       <div class="proj-nat-lbl" style="margin-top:8px">Proyección Final (Suma Tabla)</div>
       <div class="proj-nat-val" style="color:${c.color}">${proy>0?proy.toLocaleString("es-PE"):"–"}</div>
-      <div class="proj-nat-sub">${pctP} del proyectado <span style="color:var(--muted); font-weight:600"> (+${vExtra>0?vExtra.toLocaleString("es-PE"):"0"} votos)</span></div>
+      <div class="proj-nat-sub">${pctP} del proyectado <span style="color:var(--muted); font-weight:600"> (+${vExtra>0?vExtra.toLocaleString("es-PE"):"0"} extra)</span></div>
     </div>`;
   }).join("");
 
@@ -1282,13 +1286,13 @@ function _renderProjTable() {
   document.getElementById("projToggles")._built = savedBuilt;
 };
 
-// --- EXPORTAR A EXCEL (BOM INCLUIDO) ---
+// --- EXPORTAR A EXCEL (BOM INCLUIDO PARA TILDES) ---
 window.exportTableToCSV = (filename) => {
   const table = document.getElementById("projTable");
   if (!table) return;
 
   let csv = [];
-  csv.push("\uFEFF"); // Identificador UTF-8 para Excel
+  csv.push("\uFEFF"); 
   
   const rows = table.querySelectorAll("tr");
   for (let i = 0; i < rows.length; i++) {
