@@ -45,6 +45,8 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 .btn.primary:hover{opacity:.88}
 .btn.green{background:#2e7d32;color:#fff;border-color:#2e7d32}
 .btn.green:hover{background:#1b5e20}
+.btn.purple{background:#534AB7;color:#fff;border-color:#534AB7}
+.btn.purple:hover{background:#403990}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .spin{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite}
 @keyframes rot{to{transform:rotate(360deg)}}
@@ -134,34 +136,6 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 .rdet-title{font-size:14px;font-weight:700;margin-bottom:.75rem;color:var(--text)}
 .rdet .crow{grid-template-columns:24px 180px 1fr 70px}
 
-/* Map specific styling */
-.map-tooltip {
-  position: absolute;
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  padding: 8px 12px;
-  border-radius: 8px;
-  pointer-events: none;
-  opacity: 0;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  font-size: 12px;
-  transition: opacity 0.15s;
-  z-index: 1000;
-  color: var(--text);
-}
-.map-tooltip .title { font-weight: 700; margin-bottom: 4px; font-size: 13px; }
-.map-tooltip .lider { font-weight: 600; display: flex; align-items: center; gap: 5px; margin-bottom: 2px;}
-
-.map-legend-container {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 15px;
-  padding-top: 15px;
-  border-top: 1px dashed var(--border);
-}
-
 /* Heatmap Table Styling */
 .hm-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; padding: 10px; background: var(--surface2); border-radius: var(--r); align-items: center;}
 .hm-filters-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); margin-right: 5px;}
@@ -171,9 +145,8 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 .heatmap-table th { background: var(--surface2); color: var(--text); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
 .heatmap-table .cand-name { text-align: left; font-weight: 600; color: var(--text); white-space: nowrap; }
 .hm-cell { font-weight: 700; color: #111 !important; transition: filter 0.2s; cursor: default; }
-.hm-cell:hover { filter: brightness(0.9); }
 
-/* Proyección */
+/* Proyección & Simulación */
 .proj-tog{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;
           padding:4px 11px;border-radius:20px;border:1.5px solid;cursor:pointer;
           transition:opacity .15s,background .15s;user-select:none}
@@ -188,30 +161,22 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 .proj-tr:hover .proj-td{background:var(--surface2)}
 .proj-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;
             border-radius:10px;margin-left:3px}
-.proj-nat-card{background:var(--surface2);border-radius:8px;padding:10px 12px;
-               border-top:3px solid}
+.proj-nat-card{background:var(--surface2);border-radius:8px;padding:10px 12px;border-top:3px solid}
 .proj-nat-lbl{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em;margin-bottom:1px}
 .proj-nat-val{font-size:17px;font-weight:700}
 .proj-nat-sub{font-size:11px;color:var(--muted);margin-top:1px}
 
-/* Footer Styling */
-.app-footer {
-  text-align: center;
-  margin-top: 3rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.6;
-}
-.app-footer a {
-  color: var(--blue);
-  text-decoration: none;
-  font-weight: 600;
-}
-.app-footer a:hover {
-  text-decoration: underline;
-}
+/* Sliders de simulación */
+.sim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom:1.5rem;}
+.sim-card { background: var(--surface2); padding: 12px 15px; border-radius: 8px; border-left: 4px solid; }
+.sim-cname { font-weight: 700; font-size: 13px; display: flex; justify-content: space-between; }
+.sim-heatval { font-size: 11px; color: var(--muted); font-weight: 500; }
+.sim-slider-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.sim-slider { flex: 1; accent-color: var(--blue); cursor: pointer; }
+.sim-input { width: 55px; padding: 4px; border: 1px solid var(--border2); border-radius: 4px; text-align: center; font-weight: 600; font-size: 12px; background:var(--surface); color:var(--text)}
+
+.app-footer {text-align: center;margin-top: 3rem;padding-top: 1.5rem;border-top: 1px solid var(--border);font-size: 12px;color: var(--muted);line-height: 1.6;}
+.app-footer a {color: var(--blue);text-decoration: none;font-weight: 600;}
 </style>
 </head>
 <body>
@@ -246,9 +211,9 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     <div class="ssub" id="sPendPct">–</div>
   </div>
   <div class="stat">
-    <div class="slbl">Actas al JEE</div>
-    <div class="sval" id="sJEE">–</div>
-    <div class="ssub">obs. / impugnadas</div>
+    <div class="slbl">Votos válidos (Base Proy.)</div>
+    <div class="sval" id="sValidos">–</div>
+    <div class="ssub" id="sJEE">obs. / impugnadas</div>
   </div>
   <div class="stat">
     <div class="slbl">Votos emitidos</div>
@@ -274,7 +239,8 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
   <button class="tab active" onclick="showSec('nacional',this)">Nacional</button>
   <button class="tab"        onclick="showSec('evolucion',this)">Evolución</button>
   <button class="tab"        onclick="showSec('regiones',this)">Regiones</button>
-  <button class="tab"        onclick="showSec('proyeccion',this)">Proyección</button>
+  <button class="tab"        onclick="showSec('proyeccion',this)">Proyección Oficial</button>
+  <button class="tab"        onclick="showSec('simulacion',this)">Simulación Dinámica</button>
 </div>
 
 <div id="sec-nacional" class="sec active">
@@ -301,7 +267,6 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 </div>
 
 <div id="sec-evolucion" class="sec">
-  
   <div class="panel full" style="margin-bottom:1rem">
     <div class="ptitle">Evolución top 6 candidatos — % votos válidos por avance de actas</div>
     <div class="legend" id="evoLeg"></div>
@@ -309,35 +274,23 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       <canvas id="evoC" role="img"></canvas>
     </div>
   </div>
-
   <div class="panel full" style="margin-bottom:1rem">
     <div class="ptitle">Evolución top 6 candidatos — Votos Emitidos (Barras dinámicas)</div>
     <div class="chart-box" style="height:350px">
       <canvas id="evoVotesC" role="img"></canvas>
     </div>
-    <div class="evo-nota" id="evoNota"></div>
   </div>
-
   <div class="panel full">
     <div class="ptitle">Mapa de Calor — Crecimiento Logarítmico de Votos por Corte</div>
-    
     <div id="hmFiltersContainer"></div>
-
     <div style="overflow-x:auto">
       <div id="heatmapContainer"></div>
     </div>
-    <div class="evo-nota">
-      Calculado usando la fórmula de <strong>retorno logarítmico (ln(V<sub>t</sub> / V<sub>t-1</sub>))</strong> para evaluar el momentum analítico del conteo de votos. Celeste = menor tasa de crecimiento relativo, Rojo = mayor tasa de crecimiento.
-    </div>
+    <div class="evo-nota">Calculado usando la fórmula de <strong>retorno logarítmico (ln(V<sub>t</sub> / V<sub>t-1</sub>))</strong>. Celeste = menor tasa de crecimiento, Rojo = mayor tasa de crecimiento (momentum).</div>
   </div>
-
 </div>
 
 <div id="sec-regiones" class="sec">
-  <div id="reg-loading" style="color:var(--faint);font-size:12px;padding-bottom:1rem;display:none">
-      Cargando datos regionales…
-  </div>
-  
   <div class="two-col" style="grid-template-columns: 1fr 1.3fr">
     <div class="panel">
       <div class="ptitle">Mapa del Perú — Líder por Región</div>
@@ -346,13 +299,12 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       </div>
       <div id="mapLegend" class="map-legend-container" style="display:none;"></div>
     </div>
-    
     <div class="panel">
       <div class="ptitle">Detalle Regional</div>
       <div class="rdet" id="regDet" style="border:none; box-shadow:none; padding:0">
          <div style="text-align:center; padding:3rem 1rem; color:var(--faint)">
             <p style="font-size:32px; margin-bottom:10px">🗺️</p>
-            Haz clic en un departamento del mapa<br>para ver los resultados oficiales detallados de esa región.
+            Haz clic en un departamento del mapa<br>para ver los resultados detallados.
          </div>
       </div>
     </div>
@@ -362,13 +314,11 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 <div id="sec-proyeccion" class="sec">
   <div class="panel full" style="margin-bottom:1rem">
     <div class="ptitle">
-      <span>Proyección de votos — Matemática Regional Extrapolada al 100%</span>
-      <button class="btn green" onclick="exportTableToCSV('Proyeccion_ONPE_2026.csv')">
-        📥 Descargar Excel (CSV)
-      </button>
+      <span>Proyección Matemática (Share Constante)</span>
+      <button class="btn green" onclick="exportTableToCSV('Proyeccion_ONPE_2026.csv')">📥 Descargar Excel (CSV)</button>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
-      Matemática estricta: Extrapola las actas faltantes y estima los votos adicionales aplicando el % de participación (share) actual del candidato en esa región en específico.<br>
+      Matemática estricta: Usa los Votos Válidos Oficiales de cada región. Estima los votos faltantes y asigna a cada candidato una cuota idéntica a su participación actual en esa región en específico.<br>
       <strong>(Proyección Final = Voto Actual + Votos Estimados Faltantes).</strong>
     </p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
@@ -382,10 +332,31 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     </div>
   </div>
   <div class="panel full" id="projNational" style="display:none">
-    <div class="ptitle">🇵🇪 Proyección Nacional Total (Usando datos consolidados oficiales)
+    <div class="ptitle">🇵🇪 Proyección Nacional Total (Suma Exacta de Regiones)
       <span style="font-size:11px;color:var(--faint);font-weight:400;text-transform:none" id="projCoverage"></span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px" id="projNatGrid"></div>
+  </div>
+</div>
+
+<div id="sec-simulacion" class="sec">
+  <div class="panel full" style="margin-bottom:1rem">
+    <div class="ptitle">
+      <span>Simulador de Momentum de Votos Faltantes</span>
+      <button class="btn purple" onclick="applyHeatmapToSim()">🔥 Usar Momentum del Mapa de Calor</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:1.5rem;line-height:1.7">
+      Ajusta qué tan rápido o lento crecerá cada candidato en lo que queda del escrutinio nacional. Un modificador de <strong>+10%</strong> significa que el candidato captará un 10% más de votos faltantes de lo que su tendencia actual proyecta.
+    </p>
+    
+    <div class="sim-grid" id="simControls"></div>
+
+    <div class="ptitle" style="margin-top:1rem; border-top:1px solid var(--border); padding-top:1.5rem">
+        Impacto de la Simulación en el Resultado Final
+    </div>
+    <div class="chart-box" style="height:380px">
+      <canvas id="simC" role="img"></canvas>
+    </div>
   </div>
 </div>
 
@@ -404,7 +375,6 @@ const COLORS = [
   "#0F6E56","#8B6900","#5a2d82","#555","#333"
 ];
 
-// Identificamos a los candidatos por una palabra clave infalible en su PARTIDO
 const EVO = {
   labels: ["0.008%","10.400%","21.700%","39.400%","42.800%","53.886%"],
   top7: [
@@ -439,10 +409,14 @@ const TOP6 = [
 ];
 
 let DATA = null, selReg = null;
-let donutChart = null, evoChart = null, evoVotesChart = null;
+let donutChart = null, evoChart = null, evoVotesChart = null, simChart = null;
 let geoJsonData = null; 
 
 let hmSelectedCands = null;
+
+// Estados para Simulación
+let simMultipliers = {};
+TOP6.forEach(c => simMultipliers[c.match] = 0.0);
 
 async function doRefresh() {
   const btn=document.getElementById("refreshBtn");
@@ -540,6 +514,7 @@ function render() {
   }
   if (document.getElementById("sec-regiones").classList.contains("active"))   renderMapAndRegions();
   if (document.getElementById("sec-proyeccion").classList.contains("active"))  renderProyeccion();
+  if (document.getElementById("sec-simulacion").classList.contains("active"))  renderSimulacion();
   setPill(DATA.fuente);
 }
 
@@ -551,13 +526,15 @@ function renderStats() {
   const pend = +d.actasPendientes||0;
   const jee  = +d.actasJEE||0;
   const emit = +d.votosEmitidos||0;
+  const val  = +d.votosValidos||0;
   const part = +d.participacion||0;
 
   document.getElementById("sPct").textContent   = pct+"%";
   document.getElementById("sActas").textContent = `${cont} de ${tot.toLocaleString("es-PE")}`;
   document.getElementById("sPend").textContent  = pend.toLocaleString("es-PE");
   document.getElementById("sPendPct").textContent = `${((pend/tot)*100).toFixed(1)}% del total`;
-  document.getElementById("sJEE").textContent   = jee.toLocaleString("es-PE");
+  document.getElementById("sValidos").textContent = val>0 ? val.toLocaleString("es-PE") : "–";
+  document.getElementById("sJEE").textContent   = `${jee.toLocaleString("es-PE")} actas obs.`;
   document.getElementById("sEmitidos").textContent = emit>0 ? emit.toLocaleString("es-PE") : "–";
   document.getElementById("sParticipacion").textContent = part>0 ? `participación: ${part.toFixed(2)}%` : "–";
   document.getElementById("progLbl").textContent = pct+"%";
@@ -697,10 +674,6 @@ function renderEvo() {
       <span style="color:var(--faint);font-size:10px">&nbsp;·&nbsp;${m.p}</span>
     </div>`).join("");
 
-  document.getElementById("evoNota").innerHTML =
-    `Cómputo oficial ONPE. Los primeros puntos tienen sesgo urbano (Lima + exterior), que infló a López Aliaga. ` +
-    `Cada actualización agrega automáticamente un nuevo punto al gráfico. Las barras se reordenan en tiempo real.`;
-
   const dashes=[[],[],[6,3],[3,3],[8,4],[4,4],[2,3]];
 
   if (evoChart) evoChart.destroy();
@@ -804,11 +777,8 @@ function renderEvo() {
 }
 
 window.toggleHmFilter = (cb) => {
-    if (cb.checked) {
-        hmSelectedCands.push(cb.value);
-    } else {
-        hmSelectedCands = hmSelectedCands.filter(n => n !== cb.value);
-    }
+    if (cb.checked) hmSelectedCands.push(cb.value);
+    else hmSelectedCands = hmSelectedCands.filter(n => n !== cb.value);
     renderEvoHeatmap();
 };
 
@@ -843,23 +813,18 @@ function renderEvoHeatmap() {
                 <thead><tr>
                   <th style="text-align:left">Candidato</th>`;
   
-  for (let i = 1; i < labels.length; i++) {
-      html += `<th>${labels[i]}</th>`;
-  }
+  for (let i = 1; i < labels.length; i++) html += `<th>${labels[i]}</th>`;
   html += `</tr></thead><tbody>`;
 
   const scales = [];
   for (let i = 1; i < labels.length; i++) {
       let variations = cands.map(c => {
-          let prev = c.v[i-1];
-          let curr = c.v[i];
+          let prev = c.v[i-1]; let curr = c.v[i];
           if (prev === 0) return curr > 0 ? 100 : 0; 
           return Math.log(curr / prev) * 100;
       });
-      
       let minV = Math.min(...variations);
       let maxV = Math.max(...variations);
-      
       let scale = d3.scaleLinear().domain([minV, maxV]).range(["#b3e5fc", "#ef9a9a"]);
       scales.push(scale);
   }
@@ -872,23 +837,14 @@ function renderEvoHeatmap() {
                   </div>
                 </td>`;
       for (let i = 1; i < labels.length; i++) {
-          let prev = c.v[i-1];
-          let curr = c.v[i];
-          let diff = 0;
-          
-          if (prev === 0) diff = curr > 0 ? 100 : 0;
-          else diff = Math.log(curr / prev) * 100;
-          
+          let prev = c.v[i-1], curr = c.v[i], diff = 0;
+          if (prev === 0) diff = curr > 0 ? 100 : 0; else diff = Math.log(curr / prev) * 100;
           let bg = scales[i-1](diff);
-          
-          html += `<td class="hm-cell" style="background-color: ${bg};">
-                      +${diff.toFixed(3)}%
-                   </td>`;
+          html += `<td class="hm-cell" style="background-color: ${bg};" data-growth="${diff}">+${diff.toFixed(3)}%</td>`;
       }
       html += `</tr>`;
   });
   html += `</tbody></table>`;
-
   document.getElementById("heatmapContainer").innerHTML = html;
 }
 
@@ -904,10 +860,7 @@ function getCandidateColorByGlobalList(candName) {
 
 window.deselectRegion = () => {
     selReg = null;
-    d3.selectAll("path")
-      .style("opacity", 1)
-      .attr("stroke", "var(--surface)")
-      .attr("stroke-width", 0.8);
+    d3.selectAll("path").style("opacity", 1).attr("stroke", "var(--surface)").attr("stroke-width", 0.8);
     renderRegDet();
 };
 
@@ -941,22 +894,13 @@ async function renderMapAndRegions() {
   const width = container.node().getBoundingClientRect().width || 400;
   const height = 460;
   
-  const svg = container.append("svg")
-      .attr("width", "100%")
-      .attr("height", height)
-      .style("overflow", "visible");
-
+  const svg = container.append("svg").attr("width", "100%").attr("height", height).style("overflow", "visible");
   const projection = d3.geoMercator().fitSize([width, height], geoJsonData);
   const path = d3.geoPath().projection(projection);
   const tooltip = d3.select("#mapTooltip");
 
-  svg.selectAll("path")
-      .data(geoJsonData.features)
-      .enter()
-      .append("path")
-      .attr("d", path)
-      .attr("stroke", "var(--surface)")
-      .attr("stroke-width", 0.8)
+  svg.selectAll("path").data(geoJsonData.features).enter().append("path")
+      .attr("d", path).attr("stroke", "var(--surface)").attr("stroke-width", 0.8)
       .attr("fill", d => {
           const mName = normalizeMapName(d.properties.name);
           const r = regs.find(reg => normalizeMapName(reg.nombre) === mName);
@@ -968,11 +912,9 @@ async function renderMapAndRegions() {
           const idx = regs.findIndex(reg => normalizeMapName(reg.nombre) === mName);
           return idx === selReg ? 1 : 0.4;
       })
-      .style("cursor", "pointer")
-      .style("transition", "opacity 0.2s")
+      .style("cursor", "pointer").style("transition", "opacity 0.2s")
       .on("mouseover", function(event, d) {
           d3.select(this).attr("stroke", "var(--text)").attr("stroke-width", 1.5);
-          
           const mName = normalizeMapName(d.properties.name);
           const r = regs.find(reg => normalizeMapName(reg.nombre) === mName);
           
@@ -984,12 +926,10 @@ async function renderMapAndRegions() {
           } else {
               html += `<div style="font-size:11px;color:var(--faint);">Sin datos oficiales</div>`;
           }
-
           tooltip.html(html).style("opacity", 1);
       })
       .on("mousemove", function(event) {
-          tooltip.style("left", (event.pageX + 15) + "px")
-                 .style("top", (event.pageY - 15) + "px");
+          tooltip.style("left", (event.pageX + 15) + "px").style("top", (event.pageY - 15) + "px");
       })
       .on("mouseout", function() {
           d3.select(this).attr("stroke", "var(--surface)").attr("stroke-width", 0.8);
@@ -998,11 +938,9 @@ async function renderMapAndRegions() {
       .on("click", function(event, d) {
           const mName = normalizeMapName(d.properties.name);
           const idx = regs.findIndex(reg => normalizeMapName(reg.nombre) === mName);
-          
           if (idx !== -1) {
-              if (selReg === idx) {
-                  window.deselectRegion();
-              } else {
+              if (selReg === idx) window.deselectRegion();
+              else {
                   selReg = idx;
                   d3.selectAll("path").style("opacity", 0.4);
                   d3.select(this).style("opacity", 1);
@@ -1010,13 +948,11 @@ async function renderMapAndRegions() {
               }
           }
       });
-      
   renderRegDet();
 }
 
 function renderRegDet() {
   const el = document.getElementById("regDet");
-  
   if (selReg === null || !DATA.regiones?.[selReg]) { 
       el.innerHTML = `
          <div style="text-align:center; padding:5rem 1rem; color:var(--faint)">
@@ -1024,8 +960,7 @@ function renderRegDet() {
             <h3 style="color:var(--text); font-size:16px; margin-bottom:5px;">Mapa Nacional</h3>
             <p style="font-size:13px; line-height:1.6;">Haz clic en un departamento del mapa para ver los resultados oficiales detallados de esa región.</p>
          </div>`;
-      el.classList.add("show"); 
-      return; 
+      el.classList.add("show"); return; 
   }
   
   const r  = DATA.regiones[selReg];
@@ -1040,9 +975,7 @@ function renderRegDet() {
           ~${(+r.pctActas).toFixed(1)}% de actas contabilizadas
         </span>
       </div>
-      <button class="btn" onclick="deselectRegion()" style="padding: 4px 10px; font-size:11px; background:var(--surface2); border:none;">
-        ✕ Cerrar
-      </button>
+      <button class="btn" onclick="deselectRegion()" style="padding: 4px 10px; font-size:11px; background:var(--surface2); border:none;">✕ Cerrar</button>
     </div>
     <div class="clist" style="max-height: 380px; overflow-y: auto; padding-right:5px;">${candsGrouped.map((c,i)=>{
       const col = c.isOtros ? "#8b8b8b" : (COLORS[i]||COLORS[COLORS.length - 1]);
@@ -1050,152 +983,151 @@ function renderRegDet() {
       return `<div class="crow">
         <div class="rank-badge" style="background:${col};width:22px;height:22px;font-size:10px">${badge}</div>
         <div class="cinfo"><div class="cname" style="font-size:12px">${c.nombre}</div><div class="cparty">${c.partido}</div></div>
-        <div class="cbar-wrap">
-          <div class="ctrack"><div class="cfill" style="width:${(c.pct/mx*100).toFixed(1)}%;background:${col}"></div></div>
-        </div>
+        <div class="cbar-wrap"><div class="ctrack"><div class="cfill" style="width:${(c.pct/mx*100).toFixed(1)}%;background:${col}"></div></div></div>
         <div class="cpct-col">
           <div class="cpct" style="color:${col};font-size:14px">${(+c.pct).toFixed(3)}%</div>
           <div style="font-size:9px;color:var(--faint);margin-top:2px">${c.votos.toLocaleString('es-PE')} votos</div>
         </div>
       </div>`
-    }).join("")}
-    </div>`;
+    }).join("")}</div>`;
   el.classList.add("show");
 }
 
 // ══════════════════════════════════════════════════════════
-//  PROYECCIÓN CON MATEMÁTICA PURA (SIN AUTOCOMPLETADOS)
+//  PROYECCIÓN PURA (MATEMÁTICA EXACTA REGIONAL)
 // ══════════════════════════════════════════════════════════
 let projActive = new Set([0,1,2,3,4,5]); 
 
+function calculateProjectionData(simMultipliers = null) {
+    const originalRegs = (DATA && DATA.regiones) || [];
+    if (!originalRegs.length) return null;
+
+    const activeCands = TOP6.filter((_,i) => projActive.has(i));
+    
+    let sumVotosCont = 0, sumVotosFalt = 0;
+    let sumCandActual = {}, sumCandProy = {};
+    activeCands.forEach(c => { sumCandActual[c.match] = 0; sumCandProy[c.match] = 0; });
+
+    const rowsData = originalRegs.map(r => {
+        const aC = +(r.actasCont || 0);
+        const aT = +(r.actasTot || 0);
+        const pctAc = aT > 0 ? (aC / aT * 100) : (+r.pctActas || 0);
+        const vValidos = +(r.vValidos || 0); // Extraído real de ONPE
+        
+        // Faltantes exactos sobre votos válidos
+        let vFalt = (aC > 0 && aT > aC) ? Math.round(vValidos * (aT - aC) / aC) : 0;
+        vFalt = Math.max(0, vFalt);
+
+        sumVotosCont += vValidos;
+        sumVotosFalt += vFalt;
+
+        const candData = activeCands.map(cand => {
+            const cr = _findCand(r.candidatos||[], cand);
+            const vActual = +(cr?.votos||0);
+            const candShare = vValidos > 0 ? (vActual / vValidos) : 0;
+            
+            // Si hay un multiplicador de simulación, lo aplicamos al share de los votos restantes
+            let shareModificado = candShare;
+            if (simMultipliers && simMultipliers[cand.match]) {
+                shareModificado = candShare * (1 + (simMultipliers[cand.match] / 100));
+            }
+            
+            const vExtra = Math.max(0, Math.round(vFalt * shareModificado));
+            const total = vActual + vExtra;
+
+            sumCandActual[cand.match] += vActual;
+            sumCandProy[cand.match] += total;
+
+            return { cand, vActual, vExtra, total, share: cr?.pct||0 };
+        });
+
+        return { r, pctAc, vValidos, vFalt, candData };
+    });
+
+    return { activeCands, rowsData, sumVotosCont, sumVotosFalt, sumCandActual, sumCandProy };
+}
+
 function renderProyeccion() {
-  const regs = (DATA && DATA.regiones) || [];
+  const pData = calculateProjectionData();
 
   const togContainer = document.getElementById("projToggles");
   if (!togContainer._built) {
     togContainer._built = true;
     togContainer.innerHTML = TOP6.map((c,i) =>
-      `<div class="proj-tog" id="ptog-${i}"
-            style="color:${c.color};border-color:${c.color};background:${c.color}22"
-            onclick="toggleProj(${i},'${c.color}')">
+      `<div class="proj-tog" id="ptog-${i}" style="color:${c.color};border-color:${c.color};background:${c.color}22" onclick="toggleProj(${i},'${c.color}')">
          <div class="ldot" style="background:${c.color}"></div>${c.nombre.split(" ").at(-1)}
        </div>`
     ).join("");
   }
 
-  if (!regs.length) {
-    document.getElementById("projBody").innerHTML =
-      `<tr><td colspan="20" style="color:var(--faint);padding:1.5rem;text-align:center">
-         Sin datos regionales — pulsa ↻ Actualizar
-       </td></tr>`;
+  if (!pData) {
+    document.getElementById("projBody").innerHTML = `<tr><td colspan="20" style="color:var(--faint);padding:1.5rem;text-align:center">Sin datos regionales — pulsa ↻ Actualizar</td></tr>`;
     document.getElementById("projNational").style.display = "none";
     document.getElementById("projFoot").innerHTML = "";
     return;
   }
 
-  const activeCands = TOP6.filter((_,i) => projActive.has(i));
-  if (!activeCands.length) return;
+  const { activeCands, rowsData, sumVotosCont, sumVotosFalt, sumCandActual, sumCandProy } = pData;
 
-  // ── Header ──
   const thStyle = 'class="proj-th"';
   document.getElementById("projHead").innerHTML = `<tr>
     <th ${thStyle} style="text-align:left">Jurisdicción</th>
     <th ${thStyle}>Actas%</th>
-    <th ${thStyle}>V. contab.</th>
+    <th ${thStyle}>V. Válidos</th>
     <th ${thStyle}>V. faltan</th>
     ${activeCands.map(c=>`<th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small>Voto Actual</small></th>
                           <th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small style="color:var(--amber)">Proy. Final</small></th>`).join("")}
   </tr>`;
 
-  // ── Filas ──
-  let regsConDatos = 0;
-  
-  const rows = regs.map(r => {
-    // Matemática pura con actas
-    const aC = +(r.actasCont || 0);
-    const aT = +(r.actasTot || 0);
-    const pctAc = aT > 0 ? (aC / aT * 100) : (+r.pctActas || 0);
-    const totalVotos = (r.candidatos||[]).reduce((s,c)=>s+(+c.votos||0), 0);
-    
-    // Regla de 3 Simple: (Votos / Actas Contabilizadas) * Actas Faltantes
-    let vFalt = (aC > 0 && aT > aC) ? Math.round(totalVotos * (aT - aC) / aC) : 0;
-
-    if (pctAc > 0) regsConDatos++;
-
-    const tdActual = activeCands.map(cand => {
-      const cr = _findCand(r.candidatos||[], cand);
-      const v = +(cr?.votos||0), p = +(cr?.pct||0);
-      return `<td class="proj-td">
-        ${v>0 ? v.toLocaleString("es-PE") : "–"}
-        ${p>0 ? `<span class="proj-badge" style="background:${cand.color}22;color:${cand.color}">${p.toFixed(3)}%</span>` : ""}
-      </td>`;
-    });
-
-    const tdProy = activeCands.map(cand => {
-      const cr = _findCand(r.candidatos||[], cand);
-      const vActual = +(cr?.votos||0);
-      
-      // La "Cuota" (Share) actual del candidato
-      const candShare = totalVotos > 0 ? (vActual / totalVotos) : 0;
-      
-      // Votos extra = Votos totales faltantes * Cuota del candidato
-      const vExtra = Math.round(vFalt * candShare);
-      const total  = vActual + vExtra; 
-      
-      if (pctAc>0 && pctAc<99.9) {
-          return `<td class="proj-td" style="font-weight:600;color:${cand.color}">
-            ${total.toLocaleString("es-PE")} <br><small style="color:var(--muted);font-weight:400;font-size:10px">+${vExtra.toLocaleString("es-PE")} extra</small>
-          </td>`;
-      } else if (pctAc >= 99.9) {
-          return `<td class="proj-td" style="font-weight:600;color:${cand.color}">
-            ${total.toLocaleString("es-PE")}
-          </td>`;
-      } else {
-          return `<td class="proj-td" style="font-weight:600;color:${cand.color}">–</td>`;
-      }
-    });
-    
+  const rows = rowsData.map(rd => {
     let rowContent = "";
-    for(let i=0; i<activeCands.length; i++) {
-        rowContent += tdActual[i] + tdProy[i];
-    }
+    rd.candData.forEach(cd => {
+        rowContent += `<td class="proj-td">${cd.vActual>0 ? cd.vActual.toLocaleString("es-PE") : "–"} ${cd.share>0 ? `<span class="proj-badge" style="background:${cd.cand.color}22;color:${cd.cand.color}">${cd.share.toFixed(3)}%</span>` : ""}</td>`;
+        if (rd.pctAc>0 && rd.pctAc<99.9) {
+            rowContent += `<td class="proj-td" style="font-weight:600;color:${cd.cand.color}">${cd.total.toLocaleString("es-PE")} <br><small style="color:var(--muted);font-weight:400;font-size:10px">+${cd.vExtra.toLocaleString("es-PE")} extra</small></td>`;
+        } else {
+            rowContent += `<td class="proj-td" style="font-weight:600;color:${cd.cand.color}">${rd.pctAc >= 99.9 ? cd.total.toLocaleString("es-PE") : "–"}</td>`;
+        }
+    });
 
     return `<tr class="proj-tr">
-      <td class="proj-td" style="text-align:left">${r.nombre}</td>
-      <td class="proj-td">${pctAc>0?pctAc.toFixed(3)+"%":"–"}</td>
-      <td class="proj-td">${totalVotos>0?totalVotos.toLocaleString("es-PE"):"–"}</td>
-      <td class="proj-td" style="color:var(--amber)">${vFalt>0?vFalt.toLocaleString("es-PE"):"–"}</td>
+      <td class="proj-td" style="text-align:left">${rd.r.nombre}</td>
+      <td class="proj-td">${rd.pctAc>0?rd.pctAc.toFixed(3)+"%":"–"}</td>
+      <td class="proj-td">${rd.vValidos>0?rd.vValidos.toLocaleString("es-PE"):"–"}</td>
+      <td class="proj-td" style="color:var(--amber)">${rd.vFalt>0?rd.vFalt.toLocaleString("es-PE"):"–"}</td>
       ${rowContent}
     </tr>`;
   }).join("");
 
+  let tfootHtml = `<tr class="proj-tr" style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
+    <td class="proj-td" style="text-align:left">TOTAL NACIONAL</td>
+    <td class="proj-td">${DATA.pctActas ? (+DATA.pctActas).toFixed(3)+"%" : "–"}</td>
+    <td class="proj-td">${sumVotosCont.toLocaleString("es-PE")}</td>
+    <td class="proj-td" style="color:var(--amber)">${sumVotosFalt.toLocaleString("es-PE")}</td>
+  `;
+  activeCands.forEach(cand => {
+      tfootHtml += `<td class="proj-td">${sumCandActual[cand.match].toLocaleString("es-PE")}</td>`;
+      tfootHtml += `<td class="proj-td" style="color:${cand.color}">${sumCandProy[cand.match].toLocaleString("es-PE")}</td>`;
+  });
+  tfootHtml += `</tr>`;
+
   document.getElementById("projBody").innerHTML = rows;
-  document.getElementById("projFoot").innerHTML = "";
-  document.getElementById("projCoverage").textContent = ` · ${regsConDatos} jurisdicciones extraídas de ONPE`;
+  document.getElementById("projFoot").innerHTML = tfootHtml;
+  document.getElementById("projCoverage").textContent = ` · Cuadre exacto (Suma de la tabla)`;
 
-  // ── Proyección Nacional KPI (Totalmente Independiente usando Matemática Directa sobre TOTAL ONPE) ──
-  const natActasCont = +(DATA.actasContabilizadas || 0);
-  const natActasTot  = +(DATA.actasTotales || 0);
-  const natVotosValidos = +(DATA.votosValidos || 0);
-  
-  let natVFalt = (natActasCont > 0 && natActasTot > natActasCont) ? Math.round(natVotosValidos * (natActasTot - natActasCont) / natActasCont) : 0;
-  const totalFinal = natVotosValidos + natVFalt;
-
+  const totalFinal = sumVotosCont + sumVotosFalt;
   const natCards = activeCands.map(c => {
-    const natReal = _findCand(DATA.candidatos||[], c);
-    const actual  = natReal ? +natReal.votos : 0;
-    const candShare = natVotosValidos > 0 ? (actual / natVotosValidos) : 0;
+    const actual  = sumCandActual[c.match] || 0;
+    const proy    = sumCandProy[c.match] || 0;
+    const vExtra  = proy - actual; 
     
-    const vExtra = Math.round(natVFalt * candShare);
-    const proy   = actual + vExtra; 
-    
-    const pctA   = natVotosValidos > 0 ? (candShare * 100).toFixed(3) + "% s/válidos" : "–";
+    const pctA   = sumVotosCont > 0 ? ((actual / sumVotosCont) * 100).toFixed(3) + "% s/válidos" : "–";
     const pctP   = totalFinal > 0 ? ((proy / totalFinal) * 100).toFixed(3) + "%" : "–";
     
     return `<div class="proj-nat-card" style="border-top-color:${c.color}">
       <div class="proj-nat-lbl">${c.nombre}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${c.partido}</div>
-      <div class="proj-nat-lbl">Votos Nacionales ONPE</div>
+      <div class="proj-nat-lbl">Votos Actuales (Suma Tabla)</div>
       <div class="proj-nat-val">${actual>0?actual.toLocaleString("es-PE"):"–"}</div>
       <div class="proj-nat-sub">${pctA}</div>
       <div class="proj-nat-lbl" style="margin-top:8px">Proyección Final Oficial</div>
@@ -1227,7 +1159,6 @@ function _renderProjTable() {
   document.getElementById("projToggles")._built = savedBuilt;
 };
 
-// --- EXPORTAR A EXCEL (BOM INCLUIDO PARA TILDES) ---
 window.exportTableToCSV = (filename) => {
   const table = document.getElementById("projTable");
   if (!table) return;
@@ -1255,6 +1186,132 @@ window.exportTableToCSV = (filename) => {
   document.body.removeChild(downloadLink);
 }
 
+// ══════════════════════════════════════════════════════════
+//  NUEVO: SIMULACIÓN INTERACTIVA
+// ══════════════════════════════════════════════════════════
+function renderSimulacion() {
+    const sContainer = document.getElementById("simControls");
+    if (!sContainer.innerHTML) {
+        sContainer.innerHTML = TOP6.map(c => `
+            <div class="sim-card" style="border-color:${c.color}">
+                <div class="sim-cname">${c.nombre} <span class="sim-heatval" id="shval-${c.match}">–</span></div>
+                <div style="font-size:10px;color:var(--faint)">${c.partido}</div>
+                <div class="sim-slider-row">
+                    <input type="range" min="-50" max="150" value="0" step="0.5" class="sim-slider" 
+                           id="slider-${c.match}" style="accent-color:${c.color}" 
+                           oninput="updateSimVal('${c.match}', this.value)">
+                    <input type="text" class="sim-input" id="inp-${c.match}" value="0.0%" readonly>
+                </div>
+            </div>
+        `).join("");
+    }
+
+    _drawSimChart();
+}
+
+window.updateSimVal = (match, val) => {
+    document.getElementById(`inp-${match}`).value = (+val > 0 ? "+" : "") + (+val).toFixed(1) + "%";
+    simMultipliers[match] = +val;
+    _drawSimChart();
+};
+
+window.applyHeatmapToSim = () => {
+    // Leemos el crecimiento del último punto desde el arreglo EVO
+    const labels = EVO.labels;
+    if (labels.length < 2) return;
+    
+    TOP6.forEach(c => {
+        const candData = EVO.top7.find(e => e.match === c.match);
+        if (candData) {
+            let prev = candData.v[labels.length - 2];
+            let curr = candData.v[labels.length - 1];
+            let diff = 0;
+            if (prev > 0) diff = Math.log(curr / prev) * 100;
+            
+            // Limitamos entre -50 y +150 para el slider
+            diff = Math.max(-50, Math.min(150, diff));
+            
+            document.getElementById(`slider-${c.match}`).value = diff;
+            updateSimVal(c.match, diff);
+        }
+    });
+};
+
+function _drawSimChart() {
+    const pDataOriginal = calculateProjectionData(); // Default (0%)
+    const pDataSimulado = calculateProjectionData(simMultipliers);
+
+    if (!pDataOriginal || !pDataSimulado) return;
+
+    const isDark = matchMedia("(prefers-color-scheme:dark)").matches;
+    const tc=isDark?"rgba(255,255,255,.6)":"rgba(0,0,0,.6)";
+
+    const labels = TOP6.map(c => c.nombre.split(" ").at(-1));
+    const dataActual = [];
+    const dataProyOficial = [];
+    const dataProySimulada = [];
+    const bgColors = TOP6.map(c => c.color);
+
+    TOP6.forEach(c => {
+        const actual = pDataOriginal.sumCandActual[c.match] || 0;
+        const oficial = pDataOriginal.sumCandProy[c.match] || 0;
+        const simulado = pDataSimulado.sumCandProy[c.match] || 0;
+        
+        dataActual.push(actual);
+        // Guardamos solo el "extra" para apilarlo
+        dataProyOficial.push(oficial - actual);
+        dataProySimulada.push(simulado - oficial); 
+    });
+
+    if (simChart) simChart.destroy();
+    simChart = new Chart(document.getElementById("simC"), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Votos Actuales',
+                    data: dataActual,
+                    backgroundColor: bgColors,
+                    borderRadius: 4
+                },
+                {
+                    label: 'Proyección Oficial (Extra)',
+                    data: dataProyOficial,
+                    backgroundColor: bgColors.map(c => c + "66"), // Transparente
+                    borderRadius: 4
+                },
+                {
+                    label: 'Impacto de Simulación (Extra)',
+                    data: dataProySimulada,
+                    backgroundColor: bgColors.map(c => c + "33"), // Aún más transparente o patrón
+                    borderWidth: 2,
+                    borderColor: bgColors,
+                    borderDash: [5, 5],
+                    borderRadius: 4
+                }
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { stacked: true, ticks: { color: tc, callback: v=>(v/1000000).toFixed(1)+"M" } },
+                y: { stacked: true, ticks: { color: tc, font: {weight: '600'} } }
+            },
+            plugins: {
+                legend: { display: true, position: 'bottom', labels: {boxWidth: 12, font:{size:11}} },
+                tooltip: {
+                    callbacks: {
+                        label: i => ` ${i.dataset.label}: ${i.raw.toLocaleString("es-PE")} votos`
+                    }
+                }
+            }
+        }
+    });
+}
+
 function setPill(f) {
   const el = document.getElementById("sourcePill");
   if (f==="api_onpe")        { el.className="pill pill-live";     el.textContent="🟢 ONPE en vivo"; }
@@ -1275,6 +1332,7 @@ window.showSec = (id,btn) => {
   if (id==="evolucion") { renderEvo(); renderEvoHeatmap(); }
   if (id==="regiones")    renderMapAndRegions();
   if (id==="proyeccion")  renderProyeccion();
+  if (id==="simulacion")  renderSimulacion();
 };
 
 setAlert("info","⏳ Conectando al servidor...");
