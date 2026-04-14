@@ -320,9 +320,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 
   <div class="panel full">
     <div class="ptitle">Mapa de Calor — Crecimiento Logarítmico de Votos por Corte</div>
-    
     <div id="hmFiltersContainer"></div>
-
     <div style="overflow-x:auto">
       <div id="heatmapContainer"></div>
     </div>
@@ -368,8 +366,8 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       </button>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
-      Para cada región: Votos actuales y la proyección final al 100% de actas. 
-      <strong>(La columna "Proyección" = Votos Actuales + Votos Extra Faltantes calculados según la tendencia de la región).</strong>
+      Para cada región: Votos actuales y la proyección final matemática al 100% de actas. 
+      <strong>(La columna "Proyección Final" = Votos Actuales + Votos Faltantes).</strong>
     </p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
                 background:var(--surface2);border-radius:var(--r);margin-bottom:1rem" id="projToggles"></div>
@@ -382,7 +380,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     </div>
   </div>
   <div class="panel full" id="projNational" style="display:none">
-    <div class="ptitle">🇵🇪 Proyección Nacional Consolidada (Suma exacta de las regiones listadas en la tabla)
+    <div class="ptitle">🇵🇪 Proyección Nacional Consolidada (Suma matemática de la tabla)
       <span style="font-size:11px;color:var(--faint);font-weight:400;text-transform:none" id="projCoverage"></span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px" id="projNatGrid"></div>
@@ -398,14 +396,12 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 
 </div>
 <script>
-// El proxy va vacío si se despliega en web/Render.
 const PROXY  = "";
 const COLORS = [
   "#185FA5","#A32D2D","#3B6D11","#854F0B","#534AB7",
   "#0F6E56","#8B6900","#5a2d82","#555","#333"
 ];
 
-// Identificamos a los candidatos por una palabra clave infalible en su PARTIDO
 const EVO = {
   labels: ["0.008%","10.400%","21.700%","39.400%","42.800%","53.886%"],
   top7: [
@@ -1065,12 +1061,12 @@ function renderRegDet() {
 }
 
 // ══════════════════════════════════════════════════════════
-//  PROYECCIÓN Y EXCEL (Corregido y Consolidado)
+//  PROYECCIÓN MEJORADA CON AUTO-COMPLETADO Y EXCEL
 // ══════════════════════════════════════════════════════════
 let projActive = new Set([0,1,2,3,4,5]); 
 
 function renderProyeccion() {
-  const regs = (DATA && DATA.regiones) || [];
+  const originalRegs = (DATA && DATA.regiones) || [];
 
   const togContainer = document.getElementById("projToggles");
   if (!togContainer._built) {
@@ -1084,7 +1080,7 @@ function renderProyeccion() {
     ).join("");
   }
 
-  if (!regs.length) {
+  if (!originalRegs.length) {
     document.getElementById("projBody").innerHTML =
       `<tr><td colspan="20" style="color:var(--faint);padding:1.5rem;text-align:center">
          Sin datos regionales — pulsa ↻ Actualizar
@@ -1097,6 +1093,46 @@ function renderProyeccion() {
   const activeCands = TOP6.filter((_,i) => projActive.has(i));
   if (!activeCands.length) return;
 
+  // AUTO-COMPLETADO DE FUGAS Y EXTRANJERO
+  let regs = JSON.parse(JSON.stringify(originalRegs)); 
+  
+  let natCont = +(DATA.actasContabilizadas || 0);
+  let natTot  = +(DATA.actasTotales || 0);
+  let sumRegCont = regs.reduce((s, r) => s + (+r.actasCont || 0), 0);
+  let sumRegTot  = regs.reduce((s, r) => s + (+r.actasTot || 0), 0);
+
+  let missingCont = Math.max(0, natCont - sumRegCont);
+  let missingTot  = Math.max(0, natTot - sumRegTot);
+
+  let missingCands = [];
+  let totalMissingVotos = 0;
+  
+  (DATA.candidatos || []).forEach(c => {
+      let sumRegVotos = regs.reduce((s, r) => {
+          let cr = r.candidatos.find(x => x.nombre === c.nombre);
+          return s + (cr ? +cr.votos : 0);
+      }, 0);
+      
+      let mVotos = Math.max(0, c.votos - sumRegVotos);
+      totalMissingVotos += mVotos;
+      missingCands.push({
+          nombre: c.nombre, partido: c.partido, votos: mVotos, pct: 0
+      });
+  });
+
+  if (totalMissingVotos > 0) {
+      missingCands.forEach(c => {
+          c.pct = totalMissingVotos > 0 ? (c.votos / totalMissingVotos * 100) : 0;
+      });
+      regs.push({
+          nombre: "EXTRANJERO / OTROS (Auto-completado)",
+          pctActas: missingTot > 0 ? (missingCont / missingTot * 100) : 0,
+          actasCont: missingCont,
+          actasTot: missingTot,
+          candidatos: missingCands
+      });
+  }
+
   // ── Header ──
   const thStyle = 'class="proj-th"';
   document.getElementById("projHead").innerHTML = `<tr>
@@ -1108,7 +1144,7 @@ function renderProyeccion() {
                           <th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small style="color:var(--amber)">Proyección Final</small></th>`).join("")}
   </tr>`;
 
-  // ── Filas de la Tabla Regional ──
+  // ── Filas ──
   let regsConDatos = 0;
   let sumVotosCont = 0, sumVotosFalt = 0;
   let sumCandActual = {}, sumCandProy = {};
@@ -1121,19 +1157,18 @@ function renderProyeccion() {
   const rows = regs.map(r => {
     const pctAc = +r.pctActas || 0;
     const totalVotos = (r.candidatos||[]).reduce((s,c)=>s+(+c.votos||0), 0);
-    // Votos faltantes matemáticamente protegidos contra valores negativos por error de API
+    
+    // Candado matemático anti-negativos
     let vFalt = (pctAc > 0 && pctAc < 100) ? Math.round(totalVotos * (100 - pctAc) / pctAc) : 0;
     vFalt = Math.max(0, vFalt); 
 
     if (pctAc > 0) regsConDatos++;
-
     sumVotosCont += totalVotos;
     sumVotosFalt += vFalt;
 
     const tdActual = activeCands.map(cand => {
       const cr = _findCand(r.candidatos||[], cand);
       const v = +(cr?.votos||0), p = +(cr?.pct||0);
-      
       sumCandActual[cand.match] += v;
       
       return `<td class="proj-td">
@@ -1179,7 +1214,7 @@ function renderProyeccion() {
     </tr>`;
   }).join("");
 
-  // ── TFOOT (Consolidado final de la tabla) ──
+  // ── TFOOT (Consolidado final exacto) ──
   let tfootHtml = `<tr class="proj-tr" style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
     <td class="proj-td" style="text-align:left">TOTAL REGIONES LISTADAS</td>
     <td class="proj-td">–</td>
@@ -1195,11 +1230,10 @@ function renderProyeccion() {
   document.getElementById("projBody").innerHTML = rows;
   document.getElementById("projFoot").innerHTML = tfootHtml;
   document.getElementById("projCoverage").textContent =
-    ` · ${regsConDatos}/${regs.length} regiones con datos`;
+    ` · ${regsConDatos}/${regs.length} regiones con datos (incluyendo extrap.)`;
 
-  // ── Proyección Nacional KPI (Alimentada directamente de la suma de la tabla) ──
+  // ── Proyección Nacional KPI ──
   const totalFinal = sumVotosCont + sumVotosFalt;
-
   const natCards = activeCands.map(c => {
     const actual  = sumCandActual[c.match] || 0;
     const proy    = sumCandProy[c.match] || 0;
@@ -1211,7 +1245,7 @@ function renderProyeccion() {
     return `<div class="proj-nat-card" style="border-top-color:${c.color}">
       <div class="proj-nat-lbl">${c.nombre}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${c.partido}</div>
-      <div class="proj-nat-lbl">Votos Actuales (Suma Tabla)</div>
+      <div class="proj-nat-lbl">Votos Actuales (Suma Exacta Tabla)</div>
       <div class="proj-nat-val">${actual>0?actual.toLocaleString("es-PE"):"–"}</div>
       <div class="proj-nat-sub">${pctA}</div>
       <div class="proj-nat-lbl" style="margin-top:8px">Proyección Final (Suma Tabla)</div>
@@ -1243,14 +1277,13 @@ function _renderProjTable() {
   document.getElementById("projToggles")._built = savedBuilt;
 };
 
-// --- FUNCIÓN EXPORTAR A EXCEL (CSV) ---
+// --- EXPORTAR A EXCEL (BOM INCLUIDO) ---
 window.exportTableToCSV = (filename) => {
   const table = document.getElementById("projTable");
   if (!table) return;
 
   let csv = [];
-  // BOM UTF-8 para que Excel detecte las tildes automáticamente
-  csv.push("\uFEFF"); 
+  csv.push("\uFEFF"); // Identificador UTF-8 para Excel
   
   const rows = table.querySelectorAll("tr");
   for (let i = 0; i < rows.length; i++) {
