@@ -43,6 +43,8 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 .btn:hover{background:var(--surface2)}
 .btn.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
 .btn.primary:hover{opacity:.88}
+.btn.green{background:#2e7d32;color:#fff;border-color:#2e7d32}
+.btn.green:hover{background:#1b5e20}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .spin{display:none;width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:rot .7s linear infinite}
 @keyframes rot{to{transform:rotate(360deg)}}
@@ -78,7 +80,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 .two-col{display:grid;grid-template-columns:1.4fr 1fr;gap:1rem;margin-bottom:1rem}
 @media(max-width:720px){.two-col{grid-template-columns:1fr}}
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:1.1rem 1.25rem;box-shadow:var(--sh)}
-.ptitle{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.85rem;display:flex;align-items:center;gap:6px}
+.ptitle{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.85rem;display:flex;align-items:center;justify-content:space-between;gap:6px}
 .full{grid-column:1/-1}
 
 .clist{display:flex;flex-direction:column;gap:4px}
@@ -318,14 +320,12 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 
   <div class="panel full">
     <div class="ptitle">Mapa de Calor — Crecimiento Logarítmico de Votos por Corte</div>
-    
     <div id="hmFiltersContainer"></div>
-
     <div style="overflow-x:auto">
       <div id="heatmapContainer"></div>
     </div>
     <div class="evo-nota">
-      Calculado usando la fórmula de <strong>retorno logarítmico (ln(V<sub>t</sub> / V<sub>t-1</sub>))</strong> para evaluar el momentum analítico del conteo de votos. Celeste = menor tasa de crecimiento relativo, Rojo = mayor tasa de crecimiento en la columna respectiva, <strong>solo entre los candidatos seleccionados</strong>.
+      Calculado usando la fórmula de <strong>retorno logarítmico (ln(V<sub>t</sub> / V<sub>t-1</sub>))</strong> para evaluar el momentum analítico del conteo de votos. Celeste = menor tasa de crecimiento relativo, Rojo = mayor tasa de crecimiento.
     </div>
   </div>
 
@@ -350,7 +350,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       <div class="rdet" id="regDet" style="border:none; box-shadow:none; padding:0">
          <div style="text-align:center; padding:3rem 1rem; color:var(--faint)">
             <p style="font-size:32px; margin-bottom:10px">🗺️</p>
-            Haz clic en un departamento del mapa<br>para ver los resultados oficiales detallados.
+            Haz clic en un departamento del mapa<br>para ver los resultados oficiales detallados de esa región.
          </div>
       </div>
     </div>
@@ -359,9 +359,15 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 
 <div id="sec-proyeccion" class="sec">
   <div class="panel full" style="margin-bottom:1rem">
-    <div class="ptitle">Proyección de votos — tendencia actual extrapolada al 100% de actas</div>
+    <div class="ptitle">
+      <span>Proyección de votos — tendencia extrapolada al 100%</span>
+      <button class="btn green" onclick="exportTableToCSV('Proyeccion_ONPE_2026.csv')">
+        📥 Descargar Excel (CSV)
+      </button>
+    </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
-      Para cada región: votos ya contabilizados y proyección final al 100% de actas, asumiendo que la distribución proporcional actual se mantiene hasta el final del conteo en esa región. El valor en pequeño indica cuántos <strong>votos adicionales</strong> sumarían en esa jurisdicción.
+      Para cada región: Votos actuales y la proyección final matemática al 100% de actas. 
+      <strong>(La columna "Proyección" = Votos Actuales + Votos Extra Faltantes).</strong>
     </p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
                 background:var(--surface2);border-radius:var(--r);margin-bottom:1rem" id="projToggles"></div>
@@ -369,11 +375,13 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       <table style="width:100%;border-collapse:collapse;font-size:12px" id="projTable">
         <thead id="projHead"></thead>
         <tbody id="projBody"></tbody>
+        <tfoot id="projFoot"></tfoot>
       </table>
     </div>
   </div>
   <div class="panel full" id="projNational" style="display:none">
     <div class="ptitle">🇵🇪 Proyección nacional — Cálculo Extrapolado Matemático Seguro
+      <span style="font-size:11px;color:var(--faint);font-weight:400;text-transform:none" id="projCoverage"></span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px" id="projNatGrid"></div>
   </div>
@@ -388,6 +396,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 
 </div>
 <script>
+// El proxy va vacío si se despliega en web/Render.
 const PROXY  = "";
 const COLORS = [
   "#185FA5","#A32D2D","#3B6D11","#854F0B","#534AB7",
@@ -483,7 +492,6 @@ async function silentPoll() {
   } catch(e) {}
 }
 
-// Búsqueda infalible por palabra clave del partido (ej. "RENOVAC")
 function _findCand(lista, candObj) {
    return lista.find(x => x.partido.toUpperCase().includes(candObj.match));
 }
@@ -497,7 +505,7 @@ function addEvoPoint(d) {
   
   let isUpdate = false;
   if (Math.abs(pct - lastPct) <= 0.001) {
-      isUpdate = true; // El % es el mismo pero entraron votos. Actualiza el último index.
+      isUpdate = true;
   } else if (pct < lastPct) {
       return; 
   } else {
@@ -1055,7 +1063,7 @@ function renderRegDet() {
 }
 
 // ══════════════════════════════════════════════════════════
-//  PROYECCIÓN MEJORADA (Con Consolidado Inferior)
+//  PROYECCIÓN MEJORADA CON EXCEL Y TOTALES
 // ══════════════════════════════════════════════════════════
 let projActive = new Set([0,1,2,3,4,5]); 
 
@@ -1080,6 +1088,7 @@ function renderProyeccion() {
          Sin datos regionales — pulsa ↻ Actualizar
        </td></tr>`;
     document.getElementById("projNational").style.display = "none";
+    document.getElementById("projFoot").innerHTML = "";
     return;
   }
 
@@ -1093,8 +1102,8 @@ function renderProyeccion() {
     <th ${thStyle}>Actas%</th>
     <th ${thStyle}>V. contab.</th>
     <th ${thStyle}>V. faltan</th>
-    ${activeCands.map(c=>`<th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small>actual</small></th>
-                          <th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small style="color:var(--amber)">proyect.</small></th>`).join("")}
+    ${activeCands.map(c=>`<th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small>Votos Actuales</small></th>
+                          <th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small style="color:var(--amber)">Proyección Final</small></th>`).join("")}
   </tr>`;
 
   // ── Filas de la Tabla Regional ──
@@ -1110,7 +1119,9 @@ function renderProyeccion() {
   const rows = regs.map(r => {
     const pctAc = +r.pctActas || 0;
     const totalVotos = (r.candidatos||[]).reduce((s,c)=>s+(+c.votos||0), 0);
-    const vFalt = (pctAc > 0 && pctAc < 100) ? Math.round(totalVotos * (100 - pctAc) / pctAc) : 0;
+    // Votos faltantes jamás pueden ser menores a 0
+    let vFalt = (pctAc > 0 && pctAc < 100) ? Math.round(totalVotos * (100 - pctAc) / pctAc) : 0;
+    vFalt = Math.max(0, vFalt); 
 
     if (pctAc > 0) regsConDatos++;
 
@@ -1131,9 +1142,11 @@ function renderProyeccion() {
 
     const tdProy = activeCands.map(cand => {
       const cr = _findCand(r.candidatos||[], cand);
+      const vActual = +(cr?.votos||0);
       const pct = +(cr?.pct||0) / 100;
+      
       const vExtra = Math.round(vFalt * pct);
-      const total  = +(cr?.votos||0) + vExtra;
+      const total  = vActual + vExtra; // Imposible que sea menor que vActual
       
       sumCandProy[cand.match] += total;
       
@@ -1164,9 +1177,9 @@ function renderProyeccion() {
     </tr>`;
   }).join("");
 
-  // ── Consolidado final (El TFOOT que pediste) ──
+  // ── TFOOT (Consolidado final visible de la tabla) ──
   let tfootHtml = `<tr class="proj-tr" style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
-    <td class="proj-td" style="text-align:left">TOTAL REGIONES LISTADAS (${regsConDatos})</td>
+    <td class="proj-td" style="text-align:left">TOTAL REGIONES LISTADAS</td>
     <td class="proj-td">–</td>
     <td class="proj-td">${sumVotosCont.toLocaleString("es-PE")}</td>
     <td class="proj-td" style="color:var(--amber)">${sumVotosFalt.toLocaleString("es-PE")}</td>
@@ -1178,14 +1191,16 @@ function renderProyeccion() {
   });
   tfootHtml += `</tr>`;
 
-  document.getElementById("projBody").innerHTML = rows + tfootHtml;
+  document.getElementById("projBody").innerHTML = rows;
+  document.getElementById("projFoot").innerHTML = tfootHtml;
   document.getElementById("projCoverage").textContent =
     ` · ${regsConDatos}/${regs.length} regiones con datos`;
 
   // ── Proyección Nacional Independiente ──
   const pctNac = +(DATA.pctActas || 0);
   const totalValidosNac = +(DATA.votosValidos || 0);
-  const vFaltNac = (pctNac > 0 && pctNac < 100) ? Math.round(totalValidosNac * (100 - pctNac) / pctNac) : 0;
+  let vFaltNac = (pctNac > 0 && pctNac < 100) ? Math.round(totalValidosNac * (100 - pctNac) / pctNac) : 0;
+  vFaltNac = Math.max(0, vFaltNac);
   const totalFinal = totalValidosNac + vFaltNac;
 
   const natCards = activeCands.map(c => {
@@ -1233,6 +1248,36 @@ function _renderProjTable() {
   renderProyeccion();
   document.getElementById("projToggles")._built = savedBuilt;
 };
+
+// --- FUNCIÓN EXPORTAR A EXCEL (CSV) ---
+window.exportTableToCSV = (filename) => {
+  const table = document.getElementById("projTable");
+  if (!table) return;
+
+  let csv = [];
+  // Agrega un BOM para que Excel lea perfectamente las tildes y eñes
+  csv.push("\uFEFF"); 
+  
+  const rows = table.querySelectorAll("tr");
+  for (let i = 0; i < rows.length; i++) {
+      let row = [], cols = rows[i].querySelectorAll("td, th");
+      for (let j = 0; j < cols.length; j++) {
+          // Extraemos solo el texto, limpiando saltos de línea (como los "+ extra")
+          let data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, " ").replace(/ +/g, " ").trim();
+          row.push('"' + data + '"');
+      }
+      csv.push(row.join(","));
+  }
+
+  const csvFile = new Blob([csv.join("\n")], {type: "text/csv;charset=utf-8;"});
+  const downloadLink = document.createElement("a");
+  downloadLink.download = filename;
+  downloadLink.href = window.URL.createObjectURL(csvFile);
+  downloadLink.style.display = "none";
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  document.body.removeChild(downloadLink);
+}
 
 function setPill(f) {
   const el = document.getElementById("sourcePill");

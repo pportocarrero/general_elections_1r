@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v18 (Filtro Anti-Fuga por Actas Totales)
+ONPE 2026 — Proxy Local v19 (Orden Alfabético Real + URL Estricta + Anti-Fuga)
 Uso:  python3 onpe_proxy.py
 """
 
 import http.server, json, threading, time
 import urllib.request, urllib.error, urllib.parse
-import gzip, os, sys, concurrent.futures
+import gzip, os, sys, concurrent.futures, unicodedata
 from datetime import datetime, timezone
 
 PORT        = int(os.environ.get("PORT", 8765))
@@ -16,12 +16,14 @@ HTML_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "onpe_202
 BASE        = "https://resultadoelectoral.onpe.gob.pe/presentacion-backend"
 
 # Endpoints Nacionales
-EP_MESAS     = BASE + "/mesa/totales?tipoFiltro=eleccion"
 EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccion"
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# Diccionario Fijo de Ubigeos
+# Endpoints Regionales (ÚNICOS Y ESTRICTOS, NO MÁS SHOTGUN)
+EP_REG_PART  = BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={}"
+EP_REG_TOT   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&idUbigeoDepartamento={}"
+
 UBIGEOS = {
     "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
     "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
@@ -33,15 +35,6 @@ UBIGEOS = {
     "220000": "San Martín", "230000": "Tacna", "240000": "Tumbes",
     "250000": "Ucayali"
 }
-
-# Variantes de URL para evadir errores del balanceador de la ONPE
-URL_VARIANTS = [
-    (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={{}}",
-     f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={{}}"),
-    
-    (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={{}}",
-     f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&idUbigeoDepartamento={{}}")
-]
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
@@ -64,10 +57,13 @@ _cache = None
 _lock  = threading.Lock()
 _is_refreshing = False
 
+def strip_accents(s):
+    """Elimina tildes para ordenar correctamente (Áncash va en la A)"""
+    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+
 def _get_json(url, retries=1):
     sep = "&" if "?" in url else "?"
     cb_url = f"{url}{sep}_={int(time.time()*1000)}"
-    
     req = urllib.request.Request(cb_url, headers=HEADERS)
     for attempt in range(retries + 1):
         try:
@@ -139,52 +135,40 @@ def parse_candidatos(raw):
         if cod == "80": votos_blancos = votos; continue
         if cod == "81": votos_nulos = votos; continue
 
-        nombre_fmt = _fmt_nombre(nombre)
+        partes = nombre.title().split()
+        nombre_fmt = f"{partes[0]} {partes[2]}" if len(partes) >= 4 else (f"{partes[0]} {partes[1]}" if len(partes) >= 2 else nombre.title())
+        
         if nombre_fmt and (votos > 0 or pct > 0):
-            candidatos.append({
-                "nombre": nombre_fmt, "partido": partido.title(),
-                "votos": votos, "pct": round(pct, 3),
-            })
+            candidatos.append({"nombre": nombre_fmt, "partido": partido.title(), "votos": votos, "pct": round(pct, 3)})
 
     candidatos.sort(key=lambda x: -x["pct"])
     return candidatos, votos_blancos, votos_nulos
 
-def _fmt_nombre(nombre_mayus):
-    partes = nombre_mayus.strip().title().split()
-    if len(partes) >= 4: return f"{partes[0]} {partes[2]}"
-    if len(partes) == 3: return f"{partes[0]} {partes[1]}"
-    if len(partes) == 2: return f"{partes[0]} {partes[1]}"
-    return nombre_mayus.title()
-
 def fetch_region_worker(ubigeo, nombre):
-    for url_part_tpl, url_tot_tpl in URL_VARIANTS:
-        url_part = url_part_tpl.format(ubigeo)
-        url_tot  = url_tot_tpl.format(ubigeo)
+    url_part = EP_REG_PART.format(ubigeo)
+    url_tot  = EP_REG_TOT.format(ubigeo)
 
-        raw_part = _get_json(url_part)
-        raw_tot  = _get_json(url_tot)
+    raw_part = _get_json(url_part)
+    raw_tot  = _get_json(url_tot)
 
-        cands, _, _ = parse_candidatos(raw_part)
-        avance = parse_avance(raw_tot)
+    cands, _, _ = parse_candidatos(raw_part)
+    avance = parse_avance(raw_tot)
 
-        if not cands: continue
+    if not cands: return None
+    
+    # ANTI-FUGA: Si una provincia reporta más de 80k actas, nos mandaron el país entero por error.
+    if avance.get("actasTotales", 0) > 80000:
+        return None
         
-        # VALIDACIÓN ANTI-FUGA INFALIBLE: 
-        # El total nacional de actas es ~92,766. Ninguna región supera las 40,000.
-        # Si devuelve > 80,000 actas, es el consolidado nacional de ONPE colado.
-        if avance.get("actasTotales", 0) > 80000:
-            continue
-            
-        return {
-            "nombre":    nombre.title(),
-            "pctActas":  avance.get("pctActas", 0),
-            "actasCont": avance.get("actasContabilizadas", 0),
-            "actasTot":  avance.get("actasTotales", 0),
-            "lider":     cands[0]["nombre"],
-            "pctLider":  cands[0]["pct"],
-            "candidatos": cands,
-        }
-    return None
+    return {
+        "nombre":    nombre.title(),
+        "pctActas":  avance.get("pctActas", 0),
+        "actasCont": avance.get("actasContabilizadas", 0),
+        "actasTot":  avance.get("actasTotales", 0),
+        "lider":     cands[0]["nombre"],
+        "pctLider":  cands[0]["pct"],
+        "candidatos": cands,
+    }
 
 def fetch_onpe():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")
@@ -216,12 +200,15 @@ def fetch_onpe():
             if res: regiones.append(res)
     
     if regiones:
-        regiones.sort(key=lambda x: x["nombre"])
+        # Aquí se ordena alfabéticamente sin importar las tildes
+        regiones.sort(key=lambda x: strip_accents(x["nombre"]))
+        
         with _lock: old_regs = _cache.get("regiones", []) if _cache else []
         final_regs_dict = {r["nombre"]: r for r in old_regs}
         for r in regiones: final_regs_dict[r["nombre"]] = r 
-        result["regiones"] = sorted(final_regs_dict.values(), key=lambda x: x["nombre"])
-        print(f"  ✓ Regiones listas → {len(result['regiones'])}/25")
+        
+        result["regiones"] = sorted(final_regs_dict.values(), key=lambda x: strip_accents(x["nombre"]))
+        print(f"  ✓ Regiones integradas → {len(result['regiones'])}/25")
 
     result["fuente"] = ("api_onpe" if ok_count >= 2 else "api_onpe_parcial" if ok_count == 1 else "respaldo_local")
     result["timestamp"] = datetime.now(timezone.utc).isoformat()
