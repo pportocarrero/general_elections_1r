@@ -320,7 +320,9 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 
   <div class="panel full">
     <div class="ptitle">Mapa de Calor — Crecimiento Logarítmico de Votos por Corte</div>
+    
     <div id="hmFiltersContainer"></div>
+
     <div style="overflow-x:auto">
       <div id="heatmapContainer"></div>
     </div>
@@ -366,8 +368,8 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       </button>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
-      Para cada región: Votos actuales y la proyección final matemática al 100% de actas. 
-      <strong>(La columna "Proyección" = Votos Actuales + Votos Extra Faltantes).</strong>
+      Para cada región: Votos actuales y la proyección final al 100% de actas. 
+      <strong>(La columna "Proyección" = Votos Actuales + Votos Extra Faltantes calculados según la tendencia de la región).</strong>
     </p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
                 background:var(--surface2);border-radius:var(--r);margin-bottom:1rem" id="projToggles"></div>
@@ -380,7 +382,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     </div>
   </div>
   <div class="panel full" id="projNational" style="display:none">
-    <div class="ptitle">🇵🇪 Proyección nacional — Cálculo Extrapolado Matemático Seguro
+    <div class="ptitle">🇵🇪 Proyección Nacional Consolidada (Suma exacta de las regiones listadas en la tabla)
       <span style="font-size:11px;color:var(--faint);font-weight:400;text-transform:none" id="projCoverage"></span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px" id="projNatGrid"></div>
@@ -1063,7 +1065,7 @@ function renderRegDet() {
 }
 
 // ══════════════════════════════════════════════════════════
-//  PROYECCIÓN MEJORADA CON EXCEL Y TOTALES
+//  PROYECCIÓN Y EXCEL (Corregido y Consolidado)
 // ══════════════════════════════════════════════════════════
 let projActive = new Set([0,1,2,3,4,5]); 
 
@@ -1119,7 +1121,7 @@ function renderProyeccion() {
   const rows = regs.map(r => {
     const pctAc = +r.pctActas || 0;
     const totalVotos = (r.candidatos||[]).reduce((s,c)=>s+(+c.votos||0), 0);
-    // Votos faltantes jamás pueden ser menores a 0
+    // Votos faltantes matemáticamente protegidos contra valores negativos por error de API
     let vFalt = (pctAc > 0 && pctAc < 100) ? Math.round(totalVotos * (100 - pctAc) / pctAc) : 0;
     vFalt = Math.max(0, vFalt); 
 
@@ -1145,8 +1147,8 @@ function renderProyeccion() {
       const vActual = +(cr?.votos||0);
       const pct = +(cr?.pct||0) / 100;
       
-      const vExtra = Math.round(vFalt * pct);
-      const total  = vActual + vExtra; // Imposible que sea menor que vActual
+      const vExtra = Math.max(0, Math.round(vFalt * pct));
+      const total  = vActual + vExtra; 
       
       sumCandProy[cand.match] += total;
       
@@ -1169,7 +1171,7 @@ function renderProyeccion() {
     }
 
     return `<tr class="proj-tr">
-      <td class="proj-td">${r.nombre}</td>
+      <td class="proj-td" style="text-align:left">${r.nombre}</td>
       <td class="proj-td">${pctAc>0?pctAc.toFixed(1)+"%":"–"}</td>
       <td class="proj-td">${totalVotos>0?totalVotos.toLocaleString("es-PE"):"–"}</td>
       <td class="proj-td" style="color:var(--amber)">${vFalt>0?vFalt.toLocaleString("es-PE"):"–"}</td>
@@ -1177,14 +1179,13 @@ function renderProyeccion() {
     </tr>`;
   }).join("");
 
-  // ── TFOOT (Consolidado final visible de la tabla) ──
+  // ── TFOOT (Consolidado final de la tabla) ──
   let tfootHtml = `<tr class="proj-tr" style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
     <td class="proj-td" style="text-align:left">TOTAL REGIONES LISTADAS</td>
     <td class="proj-td">–</td>
     <td class="proj-td">${sumVotosCont.toLocaleString("es-PE")}</td>
     <td class="proj-td" style="color:var(--amber)">${sumVotosFalt.toLocaleString("es-PE")}</td>
   `;
-  
   activeCands.forEach(cand => {
       tfootHtml += `<td class="proj-td">${sumCandActual[cand.match].toLocaleString("es-PE")}</td>`;
       tfootHtml += `<td class="proj-td" style="color:${cand.color}">${sumCandProy[cand.match].toLocaleString("es-PE")}</td>`;
@@ -1196,33 +1197,26 @@ function renderProyeccion() {
   document.getElementById("projCoverage").textContent =
     ` · ${regsConDatos}/${regs.length} regiones con datos`;
 
-  // ── Proyección Nacional Independiente ──
-  const pctNac = +(DATA.pctActas || 0);
-  const totalValidosNac = +(DATA.votosValidos || 0);
-  let vFaltNac = (pctNac > 0 && pctNac < 100) ? Math.round(totalValidosNac * (100 - pctNac) / pctNac) : 0;
-  vFaltNac = Math.max(0, vFaltNac);
-  const totalFinal = totalValidosNac + vFaltNac;
+  // ── Proyección Nacional KPI (Alimentada directamente de la suma de la tabla) ──
+  const totalFinal = sumVotosCont + sumVotosFalt;
 
   const natCards = activeCands.map(c => {
-    const natReal = _findCand(DATA.candidatos||[], c);
-    const actual  = natReal ? +natReal.votos : 0;
-    const pctReal = natReal ? (+natReal.pct / 100) : 0;
+    const actual  = sumCandActual[c.match] || 0;
+    const proy    = sumCandProy[c.match] || 0;
+    const vExtra  = proy - actual; 
     
-    const vExtra = Math.round(vFaltNac * pctReal);
-    const proy   = actual + vExtra; 
-    
-    const pctA   = (pctReal * 100).toFixed(3) + "% s/válidos";
-    const pctP   = totalFinal>0 ? ((proy/totalFinal)*100).toFixed(2)+"%" : "–";
+    const pctA   = sumVotosCont > 0 ? ((actual / sumVotosCont) * 100).toFixed(3) + "% s/contab." : "–";
+    const pctP   = totalFinal > 0 ? ((proy / totalFinal) * 100).toFixed(2) + "%" : "–";
     
     return `<div class="proj-nat-card" style="border-top-color:${c.color}">
       <div class="proj-nat-lbl">${c.nombre}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${c.partido}</div>
-      <div class="proj-nat-lbl">Votos nacionales actuales</div>
+      <div class="proj-nat-lbl">Votos Actuales (Suma Tabla)</div>
       <div class="proj-nat-val">${actual>0?actual.toLocaleString("es-PE"):"–"}</div>
       <div class="proj-nat-sub">${pctA}</div>
-      <div class="proj-nat-lbl" style="margin-top:8px">Proyectado al 100% actas</div>
+      <div class="proj-nat-lbl" style="margin-top:8px">Proyección Final (Suma Tabla)</div>
       <div class="proj-nat-val" style="color:${c.color}">${proy>0?proy.toLocaleString("es-PE"):"–"}</div>
-      <div class="proj-nat-sub">${pctP} del total proyectado <span style="color:var(--muted); font-weight:600"> (+${vExtra>0?vExtra.toLocaleString("es-PE"):"0"} votos)</span></div>
+      <div class="proj-nat-sub">${pctP} del proyectado <span style="color:var(--muted); font-weight:600"> (+${vExtra>0?vExtra.toLocaleString("es-PE"):"0"} votos)</span></div>
     </div>`;
   }).join("");
 
@@ -1255,14 +1249,13 @@ window.exportTableToCSV = (filename) => {
   if (!table) return;
 
   let csv = [];
-  // Agrega un BOM para que Excel lea perfectamente las tildes y eñes
+  // BOM UTF-8 para que Excel detecte las tildes automáticamente
   csv.push("\uFEFF"); 
   
   const rows = table.querySelectorAll("tr");
   for (let i = 0; i < rows.length; i++) {
       let row = [], cols = rows[i].querySelectorAll("td, th");
       for (let j = 0; j < cols.length; j++) {
-          // Extraemos solo el texto, limpiando saltos de línea (como los "+ extra")
           let data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, " ").replace(/ +/g, " ").trim();
           row.push('"' + data + '"');
       }

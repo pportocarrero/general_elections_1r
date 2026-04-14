@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v19 (Orden Alfabético Real + URL Estricta + Anti-Fuga)
+ONPE 2026 — Proxy Local v20 (Purificador de Caché Corrupto + Anti-Fuga)
 Uso:  python3 onpe_proxy.py
 """
 
@@ -20,7 +20,7 @@ EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccio
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# Endpoints Regionales (ÚNICOS Y ESTRICTOS, NO MÁS SHOTGUN)
+# Endpoints Regionales (ÚNICOS Y ESTRICTOS)
 EP_REG_PART  = BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={}"
 EP_REG_TOT   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&idUbigeoDepartamento={}"
 
@@ -58,7 +58,6 @@ _lock  = threading.Lock()
 _is_refreshing = False
 
 def strip_accents(s):
-    """Elimina tildes para ordenar correctamente (Áncash va en la A)"""
     return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
 
 def _get_json(url, retries=1):
@@ -156,8 +155,9 @@ def fetch_region_worker(ubigeo, nombre):
 
     if not cands: return None
     
-    # ANTI-FUGA: Si una provincia reporta más de 80k actas, nos mandaron el país entero por error.
-    if avance.get("actasTotales", 0) > 80000:
+    total_votos = sum(c["votos"] for c in cands)
+    # ANTI-FUGA: Si una región reporta > 1.5M votos y NO es Lima, la ONPE se equivocó.
+    if total_votos > 1500000 and ubigeo != "150000":
         return None
         
     return {
@@ -200,11 +200,19 @@ def fetch_onpe():
             if res: regiones.append(res)
     
     if regiones:
-        # Aquí se ordena alfabéticamente sin importar las tildes
         regiones.sort(key=lambda x: strip_accents(x["nombre"]))
         
         with _lock: old_regs = _cache.get("regiones", []) if _cache else []
-        final_regs_dict = {r["nombre"]: r for r in old_regs}
+        
+        # PURIFICADOR DE CACHÉ: Si el caché tenía datos corruptos, los eliminamos.
+        valid_old_regs = []
+        for r in old_regs:
+            v_totales = sum(c.get("votos",0) for c in r.get("candidatos",[]))
+            if v_totales > 1500000 and r["nombre"] != "Lima":
+                continue # Purgar región corrupta
+            valid_old_regs.append(r)
+            
+        final_regs_dict = {r["nombre"]: r for r in valid_old_regs}
         for r in regiones: final_regs_dict[r["nombre"]] = r 
         
         result["regiones"] = sorted(final_regs_dict.values(), key=lambda x: strip_accents(x["nombre"]))
