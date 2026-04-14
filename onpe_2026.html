@@ -368,8 +368,8 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       </button>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
-      Para cada región: Votos actuales y la proyección final matemática al 100% de actas. 
-      <strong>(La columna "Proyección Final" = Votos Actuales + Votos Faltantes Estimados según la tendencia de la región).</strong>
+      Para cada región: Votos actuales y la proyección final al 100% de actas. 
+      <strong>(La columna "Proyección" = Votos Actuales + Votos Faltantes Estimados según la participación del candidato en esa región).</strong>
     </p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
                 background:var(--surface2);border-radius:var(--r);margin-bottom:1rem" id="projToggles"></div>
@@ -404,6 +404,7 @@ const COLORS = [
   "#0F6E56","#8B6900","#5a2d82","#555","#333"
 ];
 
+// Identificamos a los candidatos por una palabra clave infalible en su PARTIDO
 const EVO = {
   labels: ["0.008%","10.400%","21.700%","39.400%","42.800%","53.886%"],
   top7: [
@@ -1095,7 +1096,7 @@ function renderProyeccion() {
   const activeCands = TOP6.filter((_,i) => projActive.has(i));
   if (!activeCands.length) return;
 
-  // AUTO-COMPLETADO NACIONAL (Asegura que la tabla sume exactamente el Total Oficial)
+  // AUTO-COMPLETADO NACIONAL MATEMÁTICO
   let regs = JSON.parse(JSON.stringify(originalRegs)); 
   
   let natCont = +(DATA.actasContabilizadas || 0);
@@ -1122,7 +1123,6 @@ function renderProyeccion() {
       });
   });
 
-  // Solo inyectar la fila si de verdad faltan datos matemáticos del Extranjero o alguna región omitida
   if (totalMissingVotos > 0 || missingCont > 0) {
       missingCands.forEach(c => {
           c.pct = totalMissingVotos > 0 ? (c.votos / totalMissingVotos * 100) : 0;
@@ -1143,7 +1143,7 @@ function renderProyeccion() {
     <th ${thStyle}>Actas%</th>
     <th ${thStyle}>V. contab.</th>
     <th ${thStyle}>V. faltan</th>
-    ${activeCands.map(c=>`<th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small>Votos Actuales</small></th>
+    ${activeCands.map(c=>`<th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small>Voto Actual</small></th>
                           <th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small style="color:var(--amber)">Proyección Final</small></th>`).join("")}
   </tr>`;
 
@@ -1158,14 +1158,12 @@ function renderProyeccion() {
   });
 
   const rows = regs.map(r => {
-    // Para cálculo de proyección usamos actas numéricas para ser exactos
     const aC = +(r.actasCont || 0);
     const aT = +(r.actasTot || 0);
     const pctAc = aT > 0 ? (aC / aT * 100) : (+r.pctActas || 0);
-    
     const totalVotos = (r.candidatos||[]).reduce((s,c)=>s+(+c.votos||0), 0);
     
-    // Candado matemático estricto usando actas 
+    // MATEMÁTICA PURA: Votos válidos totales que faltan por contar en esta región
     let vFalt = (aC > 0 && aT > aC) ? Math.round(totalVotos * (aT - aC) / aC) : 0;
     vFalt = Math.max(0, vFalt); 
 
@@ -1187,8 +1185,10 @@ function renderProyeccion() {
     const tdProy = activeCands.map(cand => {
       const cr = _findCand(r.candidatos||[], cand);
       const vActual = +(cr?.votos||0);
+      // El "Share" real del candidato sobre los votos contabilizados
       const candShare = totalVotos > 0 ? (vActual / totalVotos) : 0;
       
+      // Asigna votos faltantes basados en su share actual (Regla de 3 directa)
       const vExtra = Math.max(0, Math.round(vFalt * candShare));
       const total  = vActual + vExtra; 
       

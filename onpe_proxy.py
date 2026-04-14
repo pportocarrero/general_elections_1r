@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v24 (Catálogo Dinámico Real + Sin Hardcodes)
+ONPE 2026 — Proxy Local v25 (Anti-WAF, Shotgun Seguro, Extranjero)
 Uso:  python3 onpe_proxy.py
 """
 
@@ -11,27 +11,34 @@ from datetime import datetime, timezone
 
 PORT        = int(os.environ.get("PORT", 8765))
 REFRESH_SEC = 25
-CACHE_FILE  = "onpe_cache_v24.json"
+CACHE_FILE  = "onpe_cache_v25.json"
 HTML_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "onpe_2026.html")
 BASE        = "https://resultadoelectoral.onpe.gob.pe/presentacion-backend"
 
 EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccion"
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
-EP_DEPTOS    = BASE + "/ubigeos/departamentos?idEleccion=10&idAmbitoGeografico=1"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# URLs Regionales Flexibles
-EP_REG_PART = BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={}"
-EP_REG_TOT  = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&idUbigeoDepartamento={}"
+# 25 Departamentos + Extranjero
+UBIGEOS = {
+    "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
+    "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
+    "070000": "Callao", "080000": "Cusco", "090000": "Huancavelica",
+    "100000": "Huánuco", "110000": "Ica", "120000": "Junín",
+    "130000": "La Libertad", "140000": "Lambayeque", "150000": "Lima",
+    "160000": "Loreto", "170000": "Madre de Dios", "180000": "Moquegua",
+    "190000": "Pasco", "200000": "Piura", "210000": "Puno",
+    "220000": "San Martín", "230000": "Tacna", "240000": "Tumbes",
+    "250000": "Ucayali", "900000": "Extranjero"
+}
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "es-PE,es;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Encoding": "gzip, deflate",
     "Referer": "https://resultadoelectoral.onpe.gob.pe/",
     "Origin": "https://resultadoelectoral.onpe.gob.pe",
-    "Cache-Control": "no-cache",
     "Connection": "keep-alive",
 }
 
@@ -44,14 +51,14 @@ FALLBACK = {
 _cache = None
 _lock  = threading.Lock()
 _is_refreshing = False
+_nacional_actas_totales = 0
 
 def strip_accents(s):
     return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
 
-def _get_json(url, retries=1):
-    sep = "&" if "?" in url else "?"
-    cb_url = f"{url}{sep}_={int(time.time()*1000)}"
-    req = urllib.request.Request(cb_url, headers=HEADERS)
+def _get_json(url, retries=2):
+    # Ya NO inyectamos "?_=timestamp" para evitar bloqueos del Firewall de ONPE
+    req = urllib.request.Request(url, headers=HEADERS)
     for attempt in range(retries + 1):
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
@@ -59,9 +66,11 @@ def _get_json(url, retries=1):
                 if r.headers.get("Content-Encoding", "") == "gzip":
                     raw = gzip.decompress(raw)
                 return json.loads(raw.decode("utf-8", errors="replace"))
-        except Exception:
-            if attempt == retries: return None
-            time.sleep(0.5)
+        except Exception as e:
+            if attempt == retries: 
+                print(f"  [X] Fallo URL: {url[-40:]} - Error: {e}")
+                return None
+            time.sleep(1)
     return None
 
 def _unwrap(raw):
@@ -132,28 +141,56 @@ def parse_candidatos(raw):
     return candidatos, votos_blancos, votos_nulos
 
 def fetch_region_worker(ubigeo, nombre):
-    url_part = EP_REG_PART.format(ubigeo)
-    url_tot  = EP_REG_TOT.format(ubigeo)
+    global _nacional_actas_totales
+    
+    # El extranjero tiene idAmbitoGeografico=2, el resto es 1
+    ambito = "2" if ubigeo == "900000" else "1"
 
-    raw_part = _get_json(url_part)
-    raw_tot  = _get_json(url_tot)
-
-    cands, _, _ = parse_candidatos(raw_part)
-    avance = parse_avance(raw_tot)
-
-    if not cands: return None
+    # Shotgun: 3 rutas oficiales para evadir caídas del balanceador ONPE
+    urls = [
+        (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={ubigeo}",
+         f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={ubigeo}"),
         
-    return {
-        "nombre":    nombre.title(),
-        "pctActas":  avance.get("pctActas", 0),
-        "actasCont": avance.get("actasContabilizadas", 0),
-        "actasTot":  avance.get("actasTotales", 0),
-        "lider":     cands[0]["nombre"],
-        "pctLider":  cands[0]["pct"],
-        "candidatos": cands,
-    }
+        (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&ubigeoNivel1={ubigeo}",
+         f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&idUbigeoDepartamento={ubigeo}"),
+         
+        (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&ubigeoNivel1={ubigeo}&listRegiones=TODOS,PER%C3%9A,EXTRANJERO",
+         f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&idUbigeoDepartamento={ubigeo}&listRegiones=TODOS,PER%C3%9A,EXTRANJERO")
+    ]
+
+    for u_part, u_tot in urls:
+        raw_part = _get_json(u_part)
+        raw_tot  = _get_json(u_tot)
+
+        cands, _, _ = parse_candidatos(raw_part)
+        avance = parse_avance(raw_tot)
+
+        if not cands or not avance: continue
+        
+        actas_t = avance.get("actasTotales", 0)
+        
+        # ANTI-FUGA INFALIBLE: Si reporta exactamente las mismas actas que el nacional, es un clon
+        if _nacional_actas_totales > 0 and actas_t == _nacional_actas_totales:
+            continue
+            
+        # Ninguna región sola supera las 60,000 actas
+        if actas_t > 60000:
+            continue
+            
+        return {
+            "nombre":    nombre.title(),
+            "pctActas":  avance.get("pctActas", 0),
+            "actasCont": avance.get("actasContabilizadas", 0),
+            "actasTot":  actas_t,
+            "lider":     cands[0]["nombre"],
+            "pctLider":  cands[0]["pct"],
+            "candidatos": cands,
+        }
+        
+    return None
 
 def fetch_onpe():
+    global _nacional_actas_totales
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")
     result   = dict(FALLBACK)
     ok_count = 0
@@ -162,6 +199,7 @@ def fetch_onpe():
     avance  = parse_avance(raw_tot)
     if avance.get("pctActas", 0) > 0:
         result.update(avance)
+        _nacional_actas_totales = avance.get("actasTotales", 0)
         ok_count += 1
 
     raw_cand = _get_json(EP_CANDIDATOS)
@@ -173,40 +211,26 @@ def fetch_onpe():
             result["votosNulos"]   = nulos
             ok_count += 1
 
-    # CATÁLOGO DINÁMICO: Leemos las regiones reales directamente de la ONPE
-    raw_deptos = _get_json(EP_DEPTOS)
-    dict_ubigeos = {}
-    if raw_deptos:
-        d_list = _unwrap(raw_deptos)
-        if isinstance(d_list, list):
-            for d in d_list:
-                ubg = d.get("cdgoDep") or d.get("idUbigeo") or d.get("codigoUbigeo")
-                nom = d.get("descDep") or d.get("nombre") or d.get("nombreUbigeo")
-                if ubg and nom:
-                    dict_ubigeos[ubg] = nom
-
-    if not dict_ubigeos:
-        print("  ! Error: No se pudo obtener el catálogo de regiones de la ONPE.")
-        return result
-
-    print(f"  ✓ Extrayendo data de {len(dict_ubigeos)} jurisdicciones oficiales...")
+    print(f"  ✓ Extrayendo data de {len(UBIGEOS)} regiones...")
     regiones = []
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_region = {executor.submit(fetch_region_worker, u, n): n for u, n in dict_ubigeos.items()}
+        future_to_region = {executor.submit(fetch_region_worker, u, n): n for u, n in UBIGEOS.items()}
         for future in concurrent.futures.as_completed(future_to_region):
             res = future.result()
             if res: regiones.append(res)
     
     if regiones:
+        # Orden Alfabético ignorando Tildes (Áncash va donde debe ir)
         regiones.sort(key=lambda x: strip_accents(x["nombre"]))
+        
         with _lock: old_regs = _cache.get("regiones", []) if _cache else []
         
         final_regs_dict = {r["nombre"]: r for r in old_regs}
         for r in regiones: final_regs_dict[r["nombre"]] = r 
         
         result["regiones"] = sorted(final_regs_dict.values(), key=lambda x: strip_accents(x["nombre"]))
-        print(f"  ✓ Regiones integradas → {len(result['regiones'])}")
+        print(f"  ✓ Regiones listas → {len(result['regiones'])}/{len(UBIGEOS)}")
 
     result["fuente"] = ("api_onpe" if ok_count >= 2 else "api_onpe_parcial" if ok_count == 1 else "respaldo_local")
     result["timestamp"] = datetime.now(timezone.utc).isoformat()
