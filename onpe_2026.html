@@ -387,17 +387,30 @@ async function doRefresh() {
   const btn=document.getElementById("refreshBtn");
   const sp =document.getElementById("spin");
   const bt =document.getElementById("btnTxt");
-  btn.disabled=true; sp.style.display="block"; bt.textContent="Consultando…";
+  btn.disabled=true; sp.style.display="block"; bt.textContent="Consultando...";
+  
   try {
-    await fetch(`${PROXY}/api/refresh`, {signal:AbortSignal.timeout(45000)});
-    const d = await fetch(`${PROXY}/api/datos`,{signal:AbortSignal.timeout(10000)}).then(r=>r.json());
+    await fetch(`${PROXY}/api/refresh`);
+    
+    let isRefreshing = true;
+    let attempts = 0;
+    while(isRefreshing && attempts < 30) { 
+        await new Promise(r => setTimeout(r, 2000));
+        const st = await fetch(`${PROXY}/api/status`).then(r=>r.json());
+        isRefreshing = st.is_refreshing;
+        attempts++;
+    }
+
+    const d = await fetch(`${PROXY}/api/datos`).then(r=>r.json());
     DATA = d;
     addEvoPoint(d);
     render();
+    
     const src = d.fuente==="api_onpe"         ? "✅ ONPE en vivo" :
                 d.fuente==="api_onpe_parcial"  ? "🟡 ONPE parcial" : "⚠️ datos locales";
     setAlert("ok", `${src} — ${(+d.pctActas).toFixed(3)}% de actas · ${d.regiones?.length||0} regiones cargadas`);
     setTimeout(()=>setAlert("",""), 6000);
+    
   } catch(e) {
     setAlert("warn", `⚠️ <strong>Proxy no responde.</strong> Revisa el backend en Render.`);
   } finally {
@@ -405,11 +418,17 @@ async function doRefresh() {
   }
 }
 
+// --- SOLUCIÓN: Polling automático acelerado a 10s ---
 async function silentPoll() {
   try {
-    const d = await fetch(`${PROXY}/api/datos`,{signal:AbortSignal.timeout(8000)}).then(r=>r.json());
-    if (d.timestamp !== DATA?.timestamp) {
-      DATA = d; addEvoPoint(d); render();
+    // Consultamos la memoria RAM del proxy en Render (instantáneo y no satura a la ONPE)
+    const d = await fetch(`${PROXY}/api/datos`, {signal:AbortSignal.timeout(5000)}).then(r=>r.json());
+    
+    // Si es la primera carga o el timestamp del backend cambió, renderizamos solos
+    if (!DATA || d.timestamp !== DATA.timestamp) {
+      DATA = d; 
+      addEvoPoint(d); 
+      render();
       setAlert("ok", `🔄 Actualizado automáticamente — ${(+d.pctActas).toFixed(3)}% actas`);
       setTimeout(()=>setAlert("",""), 4000);
     }
@@ -547,7 +566,7 @@ function renderResumen() {
     {l:"Contabilizadas",   v: (+d.actasContabilizadas||0).toLocaleString("es-PE"), s:(+d.pctActas||0).toFixed(3)+"%"},
     {l:"Pendientes",       v: (+d.actasPendientes||0).toLocaleString("es-PE"), s:"sin procesar"},
     {l:"Enviadas al JEE",  v: (+d.actasJEE||0).toLocaleString("es-PE"), s:"observadas"},
-    {l:"Votos emitidos",   v: ve>0?ve.toLocaleString("es-PE"):"–", s:d.participacion>0?(+d.participacion).toFixed(2)+"% participation":""},
+    {l:"Votos emitidos",   v: ve>0?ve.toLocaleString("es-PE"):"–", s:d.participacion>0?(+d.participacion).toFixed(2)+"% participación":""},
     {l:"Votos válidos",    v: vv>0?vv.toLocaleString("es-PE"):"–", s:ve>0&&vv>0?((vv/ve)*100).toFixed(2)+"% s/emitidos":""},
     {l:"Votos en blanco",  v: vb>0?vb.toLocaleString("es-PE"):"–", s:pctB},
     {l:"Votos nulos",      v: vn>0?vn.toLocaleString("es-PE"):"–", s:pctN},
@@ -593,7 +612,6 @@ function renderEvo() {
   const ttd=isDark?"#444":"#ddd";
 
   const labels = EVO.labels;
-  // Solo top 6
   const plotCands = EVO.top7.slice(0, 6);
 
   document.getElementById("evoLeg").innerHTML = plotCands.map(m=>
@@ -609,7 +627,6 @@ function renderEvo() {
 
   const dashes=[[],[],[6,3],[3,3],[8,4],[4,4],[2,3]];
 
-  // 1. Gráfico de Líneas (Porcentajes)
   if (evoChart) evoChart.destroy();
   evoChart = new Chart(document.getElementById("evoC"),{
     type:"line",
@@ -633,7 +650,7 @@ function renderEvo() {
           backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
           titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
           titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
-          itemSort: (a, b) => b.parsed.y - a.parsed.y, // <-- Ordena el tooltip de mayor a menor
+          itemSort: (a, b) => b.parsed.y - a.parsed.y, 
           callbacks:{
             title:i=>`Actas contabilizadas: ${i[0].label}`,
             label:i=>` ${i.dataset.label}: ${i.parsed.y.toFixed(3)}%`
@@ -647,10 +664,8 @@ function renderEvo() {
     }
   });
 
-  // 2. Gráfico de Barras Dinámico (Reordenamiento por Puesto)
   if (evoVotesChart) evoVotesChart.destroy();
   
-  // Creamos 6 datasets vacíos (Puesto 1 al Puesto 6)
   const rankDatasets = Array.from({length: 6}, (_, rankIndex) => ({
       label: `Puesto ${rankIndex + 1}`,
       data: [],
@@ -660,9 +675,7 @@ function renderEvo() {
       borderWidth: 0
   }));
 
-  // Llenamos los datasets recorriendo cada punto de tiempo
   for (let i = 0; i < labels.length; i++) {
-      // Obtenemos los candidatos en este instante y los ordenamos de mayor a menor
       const candsAtTime = plotCands.map(c => ({ n: c.n, v: c.v[i], c: c.c }));
       candsAtTime.sort((a, b) => b.v - a.v);
       
@@ -694,7 +707,6 @@ function renderEvo() {
           backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
           titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
           titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
-          // Al usar datasets por puesto, ya vienen ordenados, pero itemSort asegura 100% el visual
           itemSort: (a, b) => b.parsed.y - a.parsed.y, 
           callbacks:{
             title:i=>`Actas contabilizadas: ${i[0].label}`,
@@ -999,9 +1011,11 @@ window.showSec = (id,btn) => {
   if (id==="regiones")  renderMapAndRegions();
 };
 
-setAlert("info","⏳ Conectando al proxy… <code>python3 onpe_proxy.py</code> → <strong>↻ Actualizar</strong>");
-setTimeout(()=>silentPoll(), 600);
-setInterval(()=>silentPoll(), 60000);
+setAlert("info","⏳ Conectando al servidor...");
+// La primera carga se hace en el primer medio segundo
+setTimeout(()=>silentPoll(), 500);
+// El reloj interno de la web ahora pregunta al servidor de Render cada 10 segundos
+setInterval(()=>silentPoll(), 10000);
 </script>
 </body>
 </html>
