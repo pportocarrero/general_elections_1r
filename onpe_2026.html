@@ -404,6 +404,7 @@ const COLORS = [
   "#0F6E56","#8B6900","#5a2d82","#555","#333"
 ];
 
+// Identificamos a los candidatos por una palabra clave infalible en su PARTIDO
 const EVO = {
   labels: ["0.008%","10.400%","21.700%","39.400%","42.800%","53.886%"],
   top7: [
@@ -1095,7 +1096,7 @@ function renderProyeccion() {
   const activeCands = TOP6.filter((_,i) => projActive.has(i));
   if (!activeCands.length) return;
 
-  // AUTO-COMPLETADO NACIONAL (Para que la tabla sume exactamente el 100% de la ONPE)
+  // AUTO-COMPLETADO NACIONAL (Asegura que la tabla sume exactamente el Total Oficial)
   let regs = JSON.parse(JSON.stringify(originalRegs)); 
   
   let natCont = +(DATA.actasContabilizadas || 0);
@@ -1185,7 +1186,7 @@ function renderProyeccion() {
       const pct = +(cr?.pct||0) / 100;
       
       const vExtra = Math.max(0, Math.round(vFalt * pct));
-      const total  = vActual + vExtra; // Proyección = Actual + Faltante
+      const total  = vActual + vExtra; 
       
       sumCandProy[cand.match] += total;
       

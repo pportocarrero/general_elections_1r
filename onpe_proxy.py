@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v21 (Lima Met + Extranjero + URL Estricta + Anti-Fuga)
+ONPE 2026 — Proxy Local v22 (Detección de Clon Nacional y URLs Flexibles)
 Uso:  python3 onpe_proxy.py
 """
 
@@ -19,7 +19,6 @@ EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccio
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# 27 jurisdicciones para cubrir todo el padrón oficial, incluyendo Lima desdoblada y Extranjero
 UBIGEOS = {
     "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
     "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
@@ -33,9 +32,20 @@ UBIGEOS = {
     "250000": "Ucayali", "900000": "Extranjero"
 }
 
-# URL Estricta. Si la ONPE no encuentra el departamento, falla limpio en vez de fugar datos de otra región.
-EP_REG_PART = BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={}"
-EP_REG_TOT  = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={}"
+# 3 variantes de URL para asegurar que la ONPE responda.
+URL_VARIANTS = [
+    # Variante 1: La más directa
+    (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={{0}}",
+     f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={{0}}"),
+    
+    # Variante 2: Nivel geográfico explícito
+    (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={{0}}",
+     f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&idUbigeoDepartamento={{0}}"),
+     
+    # Variante 3: La de tu navegador (con listRegiones) por si las demás fallan
+    (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={{0}}&listRegiones=TODOS,PER%C3%9A,EXTRANJERO",
+     f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&idUbigeoDepartamento={{0}}&listRegiones=TODOS,PER%C3%9A,EXTRANJERO")
+]
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -57,6 +67,9 @@ FALLBACK = {
 _cache = None
 _lock  = threading.Lock()
 _is_refreshing = False
+
+# Guardamos las actas totales a nivel nacional para detectar clones
+_nacional_actas_totales = 0 
 
 def strip_accents(s):
     return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
@@ -145,37 +158,40 @@ def parse_candidatos(raw):
     return candidatos, votos_blancos, votos_nulos
 
 def fetch_region_worker(ubigeo, nombre):
-    raw_part = _get_json(EP_REG_PART.format(ubigeo))
-    raw_tot  = _get_json(EP_REG_TOT.format(ubigeo))
-
-    cands, _, _ = parse_candidatos(raw_part)
-    avance = parse_avance(raw_tot)
-
-    if not cands: return None
+    global _nacional_actas_totales
     
-    # ANTI-FUGA ESTRICTO: 
-    total_votos = sum(c["votos"] for c in cands)
-    is_lima = "lima" in nombre.lower()
-    
-    # Si devuelve > 80k actas, es el consolidado Nacional.
-    if avance.get("actasTotales", 0) > 80000:
-        return None
+    for url_part_tpl, url_tot_tpl in URL_VARIANTS:
+        url_part = url_part_tpl.format(ubigeo)
+        url_tot  = url_tot_tpl.format(ubigeo)
+
+        raw_part = _get_json(url_part)
+        raw_tot  = _get_json(url_tot)
+
+        cands, _, _ = parse_candidatos(raw_part)
+        avance = parse_avance(raw_tot)
+
+        if not cands or not avance: 
+            continue
+            
+        # DETECTOR DE CLON NACIONAL INFALIBLE:
+        # Si la región dice tener exactamente las mismas actas totales que todo el país, es un error de ONPE.
+        if _nacional_actas_totales > 0 and avance.get("actasTotales", 0) == _nacional_actas_totales:
+            continue
+            
+        return {
+            "nombre":    nombre.title(),
+            "pctActas":  avance.get("pctActas", 0),
+            "actasCont": avance.get("actasContabilizadas", 0),
+            "actasTot":  avance.get("actasTotales", 0),
+            "lider":     cands[0]["nombre"],
+            "pctLider":  cands[0]["pct"],
+            "candidatos": cands,
+        }
         
-    # Si devuelve > 2 millones de votos y no se llama Lima, es una fuga.
-    if total_votos > 2000000 and not is_lima:
-        return None
-        
-    return {
-        "nombre":    nombre.title(),
-        "pctActas":  avance.get("pctActas", 0),
-        "actasCont": avance.get("actasContabilizadas", 0),
-        "actasTot":  avance.get("actasTotales", 0),
-        "lider":     cands[0]["nombre"],
-        "pctLider":  cands[0]["pct"],
-        "candidatos": cands,
-    }
+    return None
 
 def fetch_onpe():
+    global _nacional_actas_totales
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")
     result   = dict(FALLBACK)
     ok_count = 0
@@ -184,6 +200,7 @@ def fetch_onpe():
     avance  = parse_avance(raw_tot)
     if avance.get("pctActas", 0) > 0:
         result.update(avance)
+        _nacional_actas_totales = avance.get("actasTotales", 0) # Guardamos el total nacional
         ok_count += 1
 
     raw_cand = _get_json(EP_CANDIDATOS)
@@ -195,6 +212,7 @@ def fetch_onpe():
             result["votosNulos"]   = nulos
             ok_count += 1
 
+    print(f"  ✓ Extrayendo data de {len(UBIGEOS)} regiones...")
     regiones = []
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -204,7 +222,7 @@ def fetch_onpe():
             if res: regiones.append(res)
     
     if regiones:
-        # Deduplicación inteligente: si Lima Provincias y Lima responden exactamente los mismos votos, nos quedamos con una.
+        # Eliminar posible duplicidad si "Lima" y "Lima Provincias" retornan lo mismo
         seen_votos = set()
         valid_regs = []
         for r in regiones:
@@ -217,7 +235,6 @@ def fetch_onpe():
         valid_regs.sort(key=lambda x: strip_accents(x["nombre"]))
         
         with _lock: old_regs = _cache.get("regiones", []) if _cache else []
-        
         final_regs_dict = {r["nombre"]: r for r in old_regs}
         for r in valid_regs: final_regs_dict[r["nombre"]] = r 
         
