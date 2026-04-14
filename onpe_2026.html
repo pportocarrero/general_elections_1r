@@ -358,12 +358,10 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 </div>
 
 <div id="sec-proyeccion" class="sec">
-  <!-- Toolbar de candidatos -->
   <div class="panel full" style="margin-bottom:1rem">
     <div class="ptitle">Proyección de votos — tendencia actual extrapolada al 100% de actas</div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
-      Para cada región: votos ya contabilizados, votos faltantes estimados, y proyección al 100% de actas
-      asumiendo que la distribución actual se mantiene. Selecciona o deselecciona candidatos con los botones.
+      Para cada región: votos ya contabilizados y proyección final al 100% de actas, asumiendo que la distribución proporcional actual se mantiene hasta el final del conteo en esa región. El valor en pequeño indica cuántos <strong>votos adicionales</strong> sumarían.
     </p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
                 background:var(--surface2);border-radius:var(--r);margin-bottom:1rem" id="projToggles"></div>
@@ -374,7 +372,6 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       </table>
     </div>
   </div>
-  <!-- Proyección nacional -->
   <div class="panel full" id="projNational" style="display:none">
     <div class="ptitle">🇵🇪 Proyección nacional — suma de todas las regiones con datos
       <span style="font-size:11px;color:var(--faint);font-weight:400;text-transform:none" id="projCoverage"></span>
@@ -392,45 +389,45 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 
 </div>
 <script>
+// El proxy va vacío si se despliega en web/Render.
 const PROXY  = "";
 const COLORS = [
   "#185FA5","#A32D2D","#3B6D11","#854F0B","#534AB7",
   "#0F6E56","#8B6900","#5a2d82","#555","#333"
 ];
 
+// Identificamos a los candidatos por una palabra clave infalible en su PARTIDO
 const EVO = {
   labels: ["0.008%","10.400%","21.700%","39.400%","42.800%","53.886%"],
-  // Los 6 candidatos fijos de interés — índices alineados con COLORS[]
   top7: [
-    {n:"Fujimori",     p:"Fuerza Popular",     c:"#A32D2D",
+    {n:"Fujimori",     p:"Fuerza Popular",          match:"FUERZA",    c:"#A32D2D", 
      d:[10.7, 16.7, 16.9, 17.0, 17.1, 16.961],
      v:[150, 200000, 450000, 1000000, 1250000, 1670250]},
-    {n:"López Aliaga", p:"Renovación Popular", c:"#185FA5",
+    {n:"López Aliaga", p:"Renovación Popular",      match:"RENOVAC",   c:"#185FA5", 
      d:[22.7, 22.0, 21.1, 20.8, 20.5, 14.499],
      v:[300, 250000, 500000, 1050000, 1300000, 1427769]},
-    {n:"Nieto",        p:"Buen Gobierno",      c:"#3B6D11",
+    {n:"Nieto",        p:"Buen Gobierno",           match:"BUEN GOB",  c:"#3B6D11", 
      d:[17.7, 16.1, 16.1, 15.7, 15.6, 12.786],
      v:[200, 180000, 400000, 850000, 1000000, 1259068]},
-    {n:"Belmont",      p:"Cívico Obras",       c:"#534AB7",
+    {n:"Belmont",      p:"Cívico Obras",            match:"OBRAS",     c:"#534AB7", 
      d:[ 0.0,  8.3,  8.5,  8.6,  8.6,  9.857],
      v:[  0,  80000, 200000, 550000, 750000, 970658]},
-    {n:"Álvarez",      p:"País para Todos",    c:"#854F0B",
+    {n:"Álvarez",      p:"País para Todos",         match:"PAÍS PARA", c:"#854F0B", 
      d:[11.0,  8.8,  8.9,  8.9,  9.0,  8.446],
      v:[100,  90000, 220000, 600000, 800000, 831675]},
-    {n:"Sánchez",      p:"Juntos por el Perú", c:"#0F6E56",
+    {n:"Sánchez",      p:"Juntos por el Perú",      match:"JUNTOS",    c:"#0F6E56", 
      d:[ 5.0,  5.5,  6.0,  6.5,  6.8,  8.013],
      v:[ 50,  60000, 150000, 450000, 600000, 789058]},
   ]
 };
 
-// Los 6 candidatos fijos para proyección (en el mismo orden que EVO.top7)
 const TOP6 = [
-  {nombre:"Keiko Fujimori",      partido:"Fuerza Popular",     clave:"Fujimori",     color:"#A32D2D"},
-  {nombre:"Rafael López Aliaga", partido:"Renovación Popular", clave:"López Aliaga", color:"#185FA5"},
-  {nombre:"Jorge Nieto",         partido:"Buen Gobierno",      clave:"Nieto",        color:"#3B6D11"},
-  {nombre:"Ricardo Belmont",     partido:"Cívico Obras",       clave:"Belmont",      color:"#534AB7"},
-  {nombre:"Carlos Álvarez",      partido:"País para Todos",    clave:"Álvarez",      color:"#854F0B"},
-  {nombre:"Roberto Sánchez",     partido:"Juntos por el Perú", clave:"Sánchez",      color:"#0F6E56"},
+  {nombre:"Keiko Fujimori",      partido:"Fuerza Popular",     match:"FUERZA",    color:"#A32D2D"},
+  {nombre:"Rafael López Aliaga", partido:"Renovación Popular", match:"RENOVAC",   color:"#185FA5"},
+  {nombre:"Jorge Nieto",         partido:"Buen Gobierno",      match:"BUEN GOB",  color:"#3B6D11"},
+  {nombre:"Ricardo Belmont",     partido:"Cívico Obras",       match:"OBRAS",     color:"#534AB7"},
+  {nombre:"Carlos Álvarez",      partido:"País para Todos",    match:"PAÍS PARA", color:"#854F0B"},
+  {nombre:"Roberto Sánchez",     partido:"Juntos por el Perú", match:"JUNTOS",    color:"#0F6E56"},
 ];
 
 let DATA = null, selReg = null;
@@ -474,13 +471,9 @@ async function doRefresh() {
   }
 }
 
-// --- SOLUCIÓN: Polling automático acelerado a 10s ---
 async function silentPoll() {
   try {
-    // Consultamos la memoria RAM del proxy en Render (instantáneo y no satura a la ONPE)
     const d = await fetch(`${PROXY}/api/datos`, {signal:AbortSignal.timeout(5000)}).then(r=>r.json());
-    
-    // Si es la primera carga o el timestamp del backend cambió, renderizamos solos
     if (!DATA || d.timestamp !== DATA.timestamp) {
       DATA = d; 
       addEvoPoint(d); 
@@ -492,17 +485,9 @@ async function silentPoll() {
   } catch(e) {}
 }
 
-// Normaliza tildes y caracteres especiales para comparaciones robustas
-function _norm(s) {
-  return (s||"").toLowerCase()
-    .normalize("NFD").replace(/[̀-ͯ]/g,"")
-    .replace(/[^a-z0-9]/g," ").trim();
-}
-
-// Busca un candidato en la lista por coincidencia de apellido normalizado
-function _findCand(lista, clave) {
-  const keyNorm = _norm(clave.split(" ").at(-1));  // último token = apellido
-  return lista.find(x => _norm(x.nombre).includes(keyNorm));
+// Búsqueda infalible por palabra clave del partido (ej. "RENOVAC")
+function _findCand(lista, candObj) {
+   return lista.find(x => x.partido.toUpperCase().includes(candObj.match));
 }
 
 function addEvoPoint(d) {
@@ -511,26 +496,29 @@ function addEvoPoint(d) {
 
   const lastLabel = EVO.labels[EVO.labels.length - 1];
   const lastPct   = +lastLabel.replace('%','');
-
-  if (pct > lastPct + 0.001) {
-    // Nuevo corte: añadir punto
-    EVO.labels.push(pct.toFixed(3)+"%");
-    EVO.top7.forEach(cm => {
-      const c = _findCand(d.candidatos||[], cm.n);
-      cm.d.push(c ? +c.pct   : (cm.d.at(-1)||0));
-      cm.v.push(c ? +c.votos : (cm.v.at(-1)||0));
-    });
-  } else if (Math.abs(pct - lastPct) <= 0.001) {
-    // Mismo corte: ACTUALIZAR el último punto con datos más frescos
-    // Esto corrige el caso de Sánchez y otros que no se actualizaban
-    EVO.top7.forEach(cm => {
-      const c = _findCand(d.candidatos||[], cm.n);
-      if (c) {
-        cm.d[cm.d.length - 1] = +c.pct;
-        cm.v[cm.v.length - 1] = +c.votos;
-      }
-    });
+  
+  let isUpdate = false;
+  if (Math.abs(pct - lastPct) <= 0.001) {
+      isUpdate = true; // El % es el mismo pero entraron votos. Actualiza el último index.
+  } else if (pct < lastPct) {
+      return; 
+  } else {
+      EVO.labels.push(pct.toFixed(3)+"%");
   }
+
+  EVO.top7.forEach((cm) => {
+    const c = _findCand(d.candidatos || [], cm);
+    const candPct = c ? +c.pct : (cm.d[cm.d.length - 1] || 0);
+    const candVotos = c ? +c.votos : (cm.v[cm.v.length - 1] || 0);
+    
+    if (isUpdate) {
+        cm.d[cm.d.length - 1] = candPct;
+        cm.v[cm.v.length - 1] = candVotos;
+    } else {
+        cm.d.push(candPct);
+        cm.v.push(candVotos);
+    }
+  });
 }
 
 function render() {
@@ -693,7 +681,7 @@ function renderEvo() {
   const ttd=isDark?"#444":"#ddd";
 
   const labels = EVO.labels;
-  const plotCands = EVO.top7; // exactamente los 6 candidatos fijos
+  const plotCands = EVO.top7.slice(0, 6);
 
   document.getElementById("evoLeg").innerHTML = plotCands.map(m=>
     `<div class="leg">
@@ -819,7 +807,7 @@ window.toggleHmFilter = (cb) => {
 
 function renderEvoHeatmap() {
   const labels = EVO.labels;
-  const heatmapCandsPool = EVO.top7; // los 6 candidatos fijos
+  const heatmapCandsPool = EVO.top7.slice(0, 6); 
   
   if (!hmSelectedCands) {
       hmSelectedCands = EVO.top7.slice(1, 6).map(c => c.n); 
@@ -1068,36 +1056,14 @@ function renderRegDet() {
   el.classList.add("show");
 }
 
-function setPill(f) {
-  const el = document.getElementById("sourcePill");
-  if (f==="api_onpe")        { el.className="pill pill-live";     el.textContent="🟢 ONPE en vivo"; }
-  else if(f==="api_onpe_parcial"){ el.className="pill pill-partial"; el.textContent="🟡 ONPE parcial"; }
-  else                        { el.className="pill pill-fallback"; el.textContent="🔴 datos locales"; }
-}
-function setAlert(type, html) {
-  const el = document.getElementById("alertBox");
-  if (!type) { el.innerHTML=""; return; }
-  el.innerHTML = `<div class="alert ${type}">${html}</div>`;
-}
-window.showSec = (id,btn) => {
-  document.querySelectorAll(".sec").forEach(s=>s.classList.remove("active"));
-  document.querySelectorAll(".tabs .tab").forEach(b=>b.classList.remove("active"));
-  document.getElementById("sec-"+id).classList.add("active");
-  btn.classList.add("active");
-  if (id==="evolucion")   { renderEvo(); renderEvoHeatmap(); }
-  if (id==="regiones")    renderMapAndRegions();
-  if (id==="proyeccion")  renderProyeccion();
-};
-
 // ══════════════════════════════════════════════════════════
 //  PROYECCIÓN
 // ══════════════════════════════════════════════════════════
-let projActive = new Set([0,1,2,3,4,5]); // todos los 6 activos por defecto
+let projActive = new Set([0,1,2,3,4,5]); 
 
 function renderProyeccion() {
   const regs = (DATA && DATA.regiones) || [];
 
-  // Toggles
   const togContainer = document.getElementById("projToggles");
   if (!togContainer._built) {
     togContainer._built = true;
@@ -1129,53 +1095,66 @@ function renderProyeccion() {
     <th ${thStyle}>Actas%</th>
     <th ${thStyle}>V. contab.</th>
     <th ${thStyle}>V. faltan</th>
-    ${activeCands.map(c=>`<th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small>actual</small></th>`).join("")}
-    ${activeCands.map(c=>`<th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small style="color:var(--amber)">proyect.</small></th>`).join("")}
+    ${activeCands.map(c=>`<th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small>actual</small></th>
+                          <th ${thStyle} style="color:${c.color}">${c.nombre.split(" ").at(-1)}<br><small style="color:var(--amber)">proyect.</small></th>`).join("")}
   </tr>`;
 
-  // ── Filas + acumuladores nacionales ──
+  // ── Filas ──
   const natActual  = {}, natProy = {};
-  activeCands.forEach(c => { natActual[c.clave]=0; natProy[c.clave]=0; });
+  activeCands.forEach(c => { natActual[c.match]=0; natProy[c.match]=0; });
   let totalContNac=0, totalFaltNac=0, regsConDatos=0;
 
   const rows = regs.map(r => {
     const pctAc = +r.pctActas || 0;
     const totalVotos = (r.candidatos||[]).reduce((s,c)=>s+(+c.votos||0), 0);
-    // Votos faltantes: proyectar linealmente desde % contabilizado
-    const vFalt = (pctAc > 0 && pctAc < 99.9)
-      ? Math.round(totalVotos * (100 - pctAc) / pctAc) : 0;
+    const vFalt = (pctAc > 0 && pctAc < 100) ? Math.round(totalVotos * (100 - pctAc) / pctAc) : 0;
 
     totalContNac += totalVotos;
     totalFaltNac += vFalt;
     if (pctAc > 0) regsConDatos++;
 
     const tdActual = activeCands.map(cand => {
-      const cr = _findCand(r.candidatos||[], cand.clave);
+      const cr = _findCand(r.candidatos||[], cand);
       const v = +(cr?.votos||0), p = +(cr?.pct||0);
-      natActual[cand.clave] += v;
+      natActual[cand.match] += v;
       return `<td class="proj-td">
         ${v>0 ? v.toLocaleString("es-PE") : "–"}
         ${p>0 ? `<span class="proj-badge" style="background:${cand.color}22;color:${cand.color}">${p.toFixed(1)}%</span>` : ""}
       </td>`;
-    }).join("");
+    });
 
     const tdProy = activeCands.map(cand => {
-      const cr = _findCand(r.candidatos||[], cand.clave);
+      const cr = _findCand(r.candidatos||[], cand);
       const pct = +(cr?.pct||0) / 100;
       const vExtra = Math.round(vFalt * pct);
       const total  = +(cr?.votos||0) + vExtra;
-      natProy[cand.clave] += total;
-      return `<td class="proj-td" style="font-weight:600;color:${cand.color}">
-        ${pctAc>0&&pctAc<99.9 ? total.toLocaleString("es-PE") : "–"}
-      </td>`;
-    }).join("");
+      natProy[cand.match] += total;
+      
+      if (pctAc>0 && pctAc<99.9) {
+          return `<td class="proj-td" style="font-weight:600;color:${cand.color}">
+            ${total.toLocaleString("es-PE")} <br><small style="color:var(--muted);font-weight:400;font-size:10px">+${vExtra.toLocaleString("es-PE")} extra</small>
+          </td>`;
+      } else if (pctAc >= 99.9) {
+          return `<td class="proj-td" style="font-weight:600;color:${cand.color}">
+            ${total.toLocaleString("es-PE")}
+          </td>`;
+      } else {
+          return `<td class="proj-td" style="font-weight:600;color:${cand.color}">–</td>`;
+      }
+    });
+    
+    // Entrelazar actual y proyectado por candidato
+    let rowContent = "";
+    for(let i=0; i<activeCands.length; i++) {
+        rowContent += tdActual[i] + tdProy[i];
+    }
 
     return `<tr class="proj-tr">
       <td class="proj-td">${r.nombre}</td>
       <td class="proj-td">${pctAc>0?pctAc.toFixed(1)+"%":"–"}</td>
       <td class="proj-td">${totalVotos>0?totalVotos.toLocaleString("es-PE"):"–"}</td>
       <td class="proj-td" style="color:var(--amber)">${vFalt>0?vFalt.toLocaleString("es-PE"):"–"}</td>
-      ${tdActual}${tdProy}
+      ${rowContent}
     </tr>`;
   }).join("");
 
@@ -1185,17 +1164,17 @@ function renderProyeccion() {
 
   // ── Proyección nacional ──
   const totalFinal = totalContNac + totalFaltNac;
-  // Votos nacionales reales (fuente más confiable: DATA.candidatos directo de ONPE)
   const natCards = activeCands.map(c => {
-    // Preferir datos nacionales directos sobre suma de regiones
-    const natReal = _findCand(DATA.candidatos||[], c.clave);
-    const actual  = natReal ? +natReal.votos : (natActual[c.clave]||0);
+    const natReal = _findCand(DATA.candidatos||[], c);
+    const actual  = natReal ? +natReal.votos : (natActual[c.match]||0);
     const pctReal = natReal ? +natReal.pct   : 0;
-    const proy    = natProy[c.clave]||0;
-    const totalVV = +DATA.votosValidos||0;
+    const proy    = natProy[c.match]||0;
+    const vExtra  = proy - actual;
+    
     const pctA    = pctReal>0 ? pctReal.toFixed(3)+"% s/válidos" :
                     (totalContNac>0 ? ((actual/totalContNac)*100).toFixed(2)+"%" : "–");
     const pctP    = totalFinal>0 ? ((proy/totalFinal)*100).toFixed(2)+"%" : "–";
+    
     return `<div class="proj-nat-card" style="border-top-color:${c.color}">
       <div class="proj-nat-lbl">${c.nombre}</div>
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${c.partido}</div>
@@ -1204,7 +1183,7 @@ function renderProyeccion() {
       <div class="proj-nat-sub">${pctA}</div>
       <div class="proj-nat-lbl" style="margin-top:8px">Proyectado al 100% actas</div>
       <div class="proj-nat-val" style="color:${c.color}">${proy>0?proy.toLocaleString("es-PE"):"–"}</div>
-      <div class="proj-nat-sub">${pctP} del total proyectado</div>
+      <div class="proj-nat-sub">${pctP} del total proyectado <span style="color:var(--muted); font-weight:600"> (+${vExtra>0?vExtra.toLocaleString("es-PE"):"0"} votos)</span></div>
     </div>`;
   }).join("");
 
@@ -1214,12 +1193,10 @@ function renderProyeccion() {
 
 window.toggleProj = (i, color) => {
   if (projActive.has(i)) projActive.delete(i); else projActive.add(i);
-  // Solo actualizar tabla y cards, no los toggles
   _renderProjTable();
 };
 
 function _renderProjTable() {
-  // Actualiza visual de todos los toggles
   TOP6.forEach((c,i) => {
     const el = document.getElementById(`ptog-${i}`);
     if (!el) return;
@@ -1227,17 +1204,36 @@ function _renderProjTable() {
     el.classList.toggle("off", !on);
     el.style.background = on ? c.color+"22" : "transparent";
   });
-  // Re-renderizar solo tabla + cards sin tocar los botones
   const savedBuilt = document.getElementById("projToggles")._built;
-  document.getElementById("projToggles")._built = true; // no reconstruir toggles
+  document.getElementById("projToggles")._built = true; 
   renderProyeccion();
   document.getElementById("projToggles")._built = savedBuilt;
 };
 
+function setPill(f) {
+  const el = document.getElementById("sourcePill");
+  if (f==="api_onpe")        { el.className="pill pill-live";     el.textContent="🟢 ONPE en vivo"; }
+  else if(f==="api_onpe_parcial"){ el.className="pill pill-partial"; el.textContent="🟡 ONPE parcial"; }
+  else                        { el.className="pill pill-fallback"; el.textContent="🔴 datos locales"; }
+}
+function setAlert(type, html) {
+  const el = document.getElementById("alertBox");
+  if (!type) { el.innerHTML=""; return; }
+  el.innerHTML = `<div class="alert ${type}">${html}</div>`;
+}
+window.showSec = (id,btn) => {
+  document.querySelectorAll(".sec").forEach(s=>s.classList.remove("active"));
+  document.querySelectorAll(".tabs .tab").forEach(b=>b.classList.remove("active"));
+  document.getElementById("sec-"+id).classList.add("active");
+  btn.classList.add("active");
+  
+  if (id==="evolucion") { renderEvo(); renderEvoHeatmap(); }
+  if (id==="regiones")    renderMapAndRegions();
+  if (id==="proyeccion")  renderProyeccion();
+};
+
 setAlert("info","⏳ Conectando al servidor...");
-// La primera carga se hace en el primer medio segundo
 setTimeout(()=>silentPoll(), 500);
-// El reloj interno de la web ahora pregunta al servidor de Render cada 10 segundos
 setInterval(()=>silentPoll(), 10000);
 </script>
 </body>
