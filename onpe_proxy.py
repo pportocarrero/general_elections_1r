@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v16 (Diccionario Fijo + Anti-Fuga + Asíncrono)
+ONPE 2026 — Proxy Local v17 (Shotgun URLs + Parser Robusto)
 Uso:  python3 onpe_proxy.py
 """
 
@@ -21,11 +21,7 @@ EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccio
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# Endpoints Regionales Exactos (Basados en tu debug.txt de Arequipa)
-EP_REG_PART  = BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={}"
-EP_REG_TOT   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&idUbigeoDepartamento={}"
-
-# DICCIONARIO FIJO: Esto evita que el sistema dependa de catálogos inestables de la ONPE.
+# Diccionario Fijo de Ubigeos
 UBIGEOS = {
     "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
     "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
@@ -38,26 +34,36 @@ UBIGEOS = {
     "250000": "Ucayali"
 }
 
+# 3 Variantes de URLs para evadir la inestabilidad de la API de ONPE
+URL_VARIANTS = [
+    # Variante 1: Parámetros extraídos de tu consola
+    (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico=1&ubigeoNivel1={{}}&listRegiones=TODOS,PER%C3%9A,EXTRANJERO&idEleccion=10",
+     f"{BASE}/resumen-general/totales?idAmbitoGeografico=1&idEleccion=10&tipoFiltro=ubigeo_nivel_01&idUbigeoDepartamento={{}}"),
+    
+    # Variante 2: Filtro Departamento Estándar
+    (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={{}}",
+     f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={{}}"),
+    
+    # Variante 3: Filtro Ubigeo Minimalista
+    (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&ubigeoNivel1={{}}",
+     f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idUbigeoDepartamento={{}}")
+]
+
 HEADERS = {
-    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Accept":          "application/json, text/plain, */*",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
     "Accept-Language": "es-PE,es;q=0.9",
     "Accept-Encoding": "gzip, deflate, br",
-    "Referer":         "https://resultadoelectoral.onpe.gob.pe/",
-    "Origin":          "https://resultadoelectoral.onpe.gob.pe",
-    "Connection":      "keep-alive",
+    "Referer": "https://resultadoelectoral.onpe.gob.pe/",
+    "Origin": "https://resultadoelectoral.onpe.gob.pe",
+    "Cache-Control": "no-cache", # Obliga a saltarse la CDN
+    "Connection": "keep-alive",
 }
 
 FALLBACK = {
-    "fuente": "respaldo_local",
-    "timestamp": "2026-04-13T10:00:00",
-    "pctActas": 53.886, "actasContabilizadas": 49988,
-    "actasTotales": 92766, "actasJEE": 155, "actasPendientes": 42623,
-    "votosEmitidos": 11488641, "votosValidos": 9847379,
-    "votosBlancos": 1128877, "votosNulos": 512385,
-    "participacion": 42.044,
-    "candidatos": [],
-    "regiones": [],
+    "fuente": "respaldo_local", "timestamp": "2026-04-13T10:00:00",
+    "pctActas": 53.886, "actasContabilizadas": 49988, "actasTotales": 92766,
+    "votosEmitidos": 11488641, "votosValidos": 9847379, "candidatos": [], "regiones": []
 }
 
 _cache = None
@@ -65,11 +71,7 @@ _lock  = threading.Lock()
 _is_refreshing = False
 
 def _get_json(url, retries=1):
-    """Inyecta un timestamp para evitar la memoria caché de la CDN de ONPE."""
-    sep = "&" if "?" in url else "?"
-    cb_url = f"{url}{sep}_={int(time.time()*1000)}"
-    
-    req = urllib.request.Request(cb_url, headers=HEADERS)
+    req = urllib.request.Request(url, headers=HEADERS)
     for attempt in range(retries + 1):
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
@@ -83,26 +85,35 @@ def _get_json(url, retries=1):
     return None
 
 def _unwrap(raw):
-    if isinstance(raw, dict) and "data" in raw:
-        return raw["data"]
+    if isinstance(raw, dict) and "data" in raw: return raw["data"]
     return raw
 
 def parse_avance(raw_totales):
     if not raw_totales: return {}
     d = _unwrap(raw_totales)
-    
     if isinstance(d, list):
         if len(d) > 0: d = d[0]
         else: return {}
     if not isinstance(d, dict): return {}
 
+    # Corregido: Identificar si "actasContabilizadas" trae el % o el valor absoluto
     pct = float(d.get("porcentajeActasContabilizadas") or d.get("porcentajeAvanceMesas") or 0)
-    cont = int(d.get("contabilizadas") or d.get("actasContabilizadas") or 0)
+    
+    cont = d.get("contabilizadas")
+    if cont is None:
+        ac = d.get("actasContabilizadas", 0)
+        # Si es menor a 100 y tiene decimales, es el porcentaje. Si no, es el absoluto.
+        if isinstance(ac, float) and ac <= 100.0:
+            pct = pct or ac
+            cont = 0
+        else:
+            cont = ac
+            
+    cont = int(cont or 0)
     tot  = int(d.get("totalActas") or 92766)
-    jee  = int(d.get("enviadasJee") or 0)
-    pend = int(d.get("pendientesJee") or max(0, tot - cont - jee))
+    jee  = int(d.get("enviadasJee") or d.get("actasEnviadasJee") or 0)
+    pend = int(d.get("pendientesJee") or d.get("actasPendientesJee") or max(0, tot - cont - jee))
 
-    # Cálculo seguro si la API omite el porcentaje
     if pct == 0 and tot > 0:
         pct = (cont / tot) * 100.0
 
@@ -157,34 +168,40 @@ def _fmt_nombre(nombre_mayus):
     return nombre_mayus.title()
 
 def fetch_region_worker(ubigeo, nombre):
-    """Extrae datos de la región y valida que no sea una fuga de datos nacionales."""
-    raw_part = _get_json(EP_REG_PART.format(ubigeo))
-    raw_tot  = _get_json(EP_REG_TOT.format(ubigeo))
-    
-    cands, _, _ = parse_candidatos(raw_part)
-    avance = parse_avance(raw_tot)
+    """Prueba múltiples URLs hasta obtener datos limpios y verdaderos de la región"""
+    for url_part_tpl, url_tot_tpl in URL_VARIANTS:
+        url_part = url_part_tpl.format(ubigeo)
+        url_tot  = url_tot_tpl.format(ubigeo)
+        
+        raw_part = _get_json(url_part)
+        raw_tot  = _get_json(url_tot)
+        
+        cands, _, _ = parse_candidatos(raw_part)
+        avance = parse_avance(raw_tot)
 
-    if not cands: return None
-
-    # VALIDACIÓN ANTI-FUGA: Si una región pequeña reporta >2M votos, la ONPE se equivocó.
-    total_votos = sum(c["votos"] for c in cands)
-    if total_votos > 2000000 and ubigeo != "150000":  # 150000 es Lima
-        return None
-
-    return {
-        "nombre": nombre.title(),
-        "pctActas": avance.get("pctActas", 0),
-        "lider": cands[0]["nombre"],
-        "pctLider": cands[0]["pct"],
-        "candidatos": cands
-    }
+        if not cands: continue # URL falló, intentar la siguiente
+        
+        # VALIDACIÓN ANTI-FUGA: Si una región reporta más de 5M votos (imposible para provincias)
+        # significa que la URL de ONPE devolvió la base nacional por error.
+        total_votos = sum(c["votos"] for c in cands)
+        if total_votos > 5000000 and ubigeo != "150000": # 150000 = Lima
+            continue # Fuga detectada, intentar la siguiente URL
+            
+        return {
+            "nombre": nombre.title(),
+            "pctActas": avance.get("pctActas", 0),
+            "lider": cands[0]["nombre"],
+            "pctLider": cands[0]["pct"],
+            "candidatos": cands
+        }
+        
+    return None # Si fallan las 3 variantes, se asume sin datos temporales
 
 def fetch_onpe():
     print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")
     result   = dict(FALLBACK)
     ok_count = 0
 
-    # 1) Avance Nacional
     raw_tot = _get_json(EP_TOTALES)
     avance  = parse_avance(raw_tot)
     if avance.get("pctActas", 0) > 0:
@@ -192,7 +209,6 @@ def fetch_onpe():
         ok_count += 1
         print(f"  ✓ Avance Nacional → {result['pctActas']:.3f}% actas")
 
-    # 2) Candidatos Nacionales
     raw_cand = _get_json(EP_CANDIDATOS)
     if raw_cand:
         cands, blancos, nulos = parse_candidatos(raw_cand)
@@ -203,8 +219,7 @@ def fetch_onpe():
             ok_count += 1
             print(f"  ✓ Participantes   → {len(cands)}")
 
-    # 3) Regiones (Diccionario Fijo y Seguro)
-    print(f"  ✓ Procesando {len(UBIGEOS)} regiones (Hardcoded)...")
+    print(f"  ✓ Extrayendo data de {len(UBIGEOS)} regiones...")
     regiones = []
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -216,8 +231,7 @@ def fetch_onpe():
     
     if regiones:
         regiones.sort(key=lambda x: x["nombre"])
-        
-        # Mantenemos las regiones previas en caché si la ONPE bloquea temporalmente alguna
+        # Mantener los datos previos si ONPE bloquea la conexión en esta iteración
         with _lock:
             old_regs = _cache.get("regiones", []) if _cache else []
             
@@ -268,7 +282,6 @@ def refresh_loop():
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
-        # Oculta los pings de actualización para no ensuciar tu consola de Render
         if args and not any(x in str(args[0]) for x in ["/api/datos", "/api/status"]):
             print(f"  GET {args[0]}")
             
@@ -324,7 +337,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  ONPE 2026 — Proxy Local v16 (Anti-Fuga + Diccionario Fijo)")
+    print("  ONPE 2026 — Proxy Local v17 (Shotgun URLS)")
     print("=" * 60)
     _load_cache()
     threading.Thread(target=_do_refresh, daemon=True).start()
