@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy de Producción (Render.com)
-Motor de extracción sigilosa, asíncrona y consolidación de datos.
+ONPE 2026 — Proxy Nube v31 (Evasión WAF Cloudflare para Render)
 """
 
 import http.server, json, threading, time
-import urllib.request, urllib.error, urllib.parse
+import urllib.request, urllib.error
 import gzip, os, sys, concurrent.futures, unicodedata, ssl
 from datetime import datetime, timezone
 
-# Render inyecta el puerto dinámicamente en la variable de entorno PORT
 PORT        = int(os.environ.get("PORT", 8765))
 REFRESH_SEC = 25
-CACHE_FILE  = "onpe_cache_prod.json"
+CACHE_FILE  = "onpe_cache_v31.json"
 HTML_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "onpe_2026.html")
 BASE        = "https://resultadoelectoral.onpe.gob.pe/presentacion-backend"
 
 EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccion"
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
-EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# Las 27 Jurisdicciones Oficiales de ONPE (Lima desdoblada + Extranjero)
+# 27 Jurisdicciones Oficiales Exactas
 UBIGEOS = {
     "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
     "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
@@ -33,16 +30,25 @@ UBIGEOS = {
     "250000": "Ucayali", "900000": "Extranjero"
 }
 
+# Encabezados Stealth para engañar al Firewall de la ONPE desde Render
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "es-PE,es;q=0.9",
-    "Accept-Encoding": "gzip, deflate",
+    "Accept-Language": "es-PE,es-419;q=0.9,es;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
     "Connection": "keep-alive",
+    "Referer": "https://resultadoelectoral.onpe.gob.pe/",
+    "Origin": "https://resultadoelectoral.onpe.gob.pe",
 }
 
 FALLBACK = {
-    "fuente": "inicializando", "timestamp": datetime.now(timezone.utc).isoformat(),
+    "fuente": "inicializando_render", "timestamp": datetime.now(timezone.utc).isoformat(),
     "pctActas": 0, "actasContabilizadas": 0, "actasTotales": 92766,
     "votosEmitidos": 0, "votosValidos": 0, "candidatos": [], "regiones": []
 }
@@ -51,7 +57,7 @@ _cache = None
 _lock  = threading.Lock()
 _is_refreshing = False
 
-# Contexto SSL seguro para evitar bloqueos
+# Contexto SSL ignorando validación estricta gubernamental
 CTX = ssl.create_default_context()
 CTX.check_hostname = False
 CTX.verify_mode = ssl.CERT_NONE
@@ -65,11 +71,17 @@ def _get_json(url, retries=2):
         try:
             with urllib.request.urlopen(req, timeout=12, context=CTX) as r:
                 raw = r.read()
-                if r.headers.get("Content-Encoding", "") == "gzip":
+                if r.headers.get("Content-Encoding", "") in ["gzip", "x-gzip"]:
                     raw = gzip.decompress(raw)
                 return json.loads(raw.decode("utf-8", errors="replace"))
-        except Exception:
-            if attempt == retries: return None
+        except urllib.error.HTTPError as e:
+            if attempt == retries:
+                print(f"  [X] ONPE bloqueó la IP de Render (Error {e.code}) en: {url.split('/')[-1]}")
+                return None
+            time.sleep(1.5)
+        except Exception as e:
+            if attempt == retries: 
+                return None
             time.sleep(1)
     return None
 
@@ -153,8 +165,8 @@ def fetch_region_worker(ubigeo, nombre):
     vV = avance.get("votosValidos", 0)
     if vV == 0: vV = sum(c["votos"] for c in cands)
     
-    # Filtro Anti-Cruce: Ninguna región por sí sola llega a 80,000 actas
-    if aT > 80000: return None
+    # Filtro Anti-Cruce: Ninguna jurisdicción sola llega a 85,000 actas
+    if aT > 85000: return None
         
     return {
         "nombre":    nombre.title(),
@@ -168,7 +180,7 @@ def fetch_region_worker(ubigeo, nombre):
     }
 
 def fetch_onpe():
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE desde Render...")
     result   = dict(FALLBACK)
     ok_count = 0
 
@@ -188,7 +200,7 @@ def fetch_onpe():
             ok_count += 1
 
     if ok_count == 0:
-        print("  ✗ Servidor ONPE bloqueado. Abortando para no dañar caché.")
+        print("  ✗ Render bloqueado por Cloudflare ONPE. Usando Caché.")
         return None
 
     regiones = []
@@ -249,7 +261,7 @@ def refresh_loop():
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
-        pass # Silenciamos los logs HTTP para no saturar la consola de Render
+        pass # Silenciamos logs HTTP para no llenar los logs de Render
             
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -279,18 +291,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif path == "/api/status":
             self._json({"is_refreshing": _is_refreshing})
             
-        elif path == "/api/mapa":
-            try:
-                req = urllib.request.Request(EP_MAP_JSON, headers=HEADERS)
-                with urllib.request.urlopen(req, timeout=10, context=CTX) as r:
-                    raw = r.read()
-                    if r.headers.get("Content-Encoding", "") == "gzip": raw = gzip.decompress(raw)
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self._cors(); self.end_headers(); self.wfile.write(raw)
-            except Exception as e:
-                self.send_response(500); self._cors(); self.end_headers()
-                
         elif path in ("/", "/index.html"):
             if os.path.exists(HTML_FILE):
                 with open(HTML_FILE, "rb") as f: content = f.read()
@@ -302,12 +302,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers()
 
 if __name__ == "__main__":
+    # Limpia archivos conflictivos de versiones anteriores
+    for cf in ["onpe_cache.json", "onpe_cache_v24.json", "onpe_cache_v25.json", "onpe_cache_v26.json"]:
+        if os.path.exists(cf): os.remove(cf)
+        
     _load_cache()
     threading.Thread(target=_do_refresh, daemon=True).start()
     threading.Thread(target=refresh_loop, daemon=True).start()
     server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"==================================================")
-    print(f" ONPE 2026 DASHBOARD ARRANCADO EN PUERTO {PORT}")
-    print(f"==================================================")
+    print(f"\n=============================================")
+    print(f"  ONPE 2026 Proxy Corriendo en Puerto {PORT}")
+    print(f"=============================================")
     try: server.serve_forever()
     except KeyboardInterrupt: sys.exit(0)
