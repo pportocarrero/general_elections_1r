@@ -265,7 +265,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
   <button class="tab"        onclick="showSec('evolucion',this)">Evolución</button>
   <button class="tab"        onclick="showSec('regiones',this)">Regiones</button>
   <button class="tab"        onclick="showSec('proyeccion',this)">Proyección Oficial</button>
-  <button class="tab"        onclick="showSec('econometria',this)">Econometría Avanzada</button>
+  <button class="tab"        onclick="showSec('econometria',this)">Proyecciones no lineales</button>
 </div>
 
 <div id="sec-nacional" class="sec active">
@@ -343,7 +343,8 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       <button class="btn green" onclick="exportTableToCSV('Proyeccion_ONPE_2026.csv')">📥 Descargar Excel (CSV)</button>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
-      Calcula los <strong>Votos Faltantes</strong> de cada jurisdicción. Luego asume que los candidatos captarán esos votos manteniendo exactamente el mismo <strong>% de participación</strong> que tienen actualmente en esa región.
+      Matemática estricta: Usa los Votos Válidos Oficiales de cada región. Estima los votos faltantes y asigna a cada candidato una cuota idéntica a su participación actual en esa región en específico.<br>
+      <strong>(Proyección Final = Voto Actual + Votos Estimados Faltantes).</strong>
     </p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
                 background:var(--surface2);border-radius:var(--r);margin-bottom:1rem" id="projToggles"></div>
@@ -356,7 +357,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     </div>
   </div>
   <div class="panel full" id="projNational" style="display:none">
-    <div class="ptitle">🇵🇪 Proyección Nacional Total (Suma Exacta de la Tabla)
+    <div class="ptitle">🇵🇪 Proyección Nacional Total (Suma Exacta de Regiones)
       <span style="font-size:11px;color:var(--faint);font-weight:400;text-transform:none" id="projCoverage"></span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px" id="projNatGrid"></div>
@@ -366,33 +367,42 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 <div id="sec-econometria" class="sec">
   <div class="panel full" style="margin-bottom:1rem">
     <div class="ptitle">
-      <span>Simulación Dinámica (Edge Computing)</span>
+      <span>Simulador de Momentum de Votos Faltantes</span>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn purple" onclick="applyHeatmapToSim()">🔥 Ajustar a Momentum Reciente</button>
+        <button class="btn purple" onclick="applyHeatmapToSim()">🔥 Usar Momentum del Mapa de Calor</button>
         <button class="btn amber" onclick="runMonteCarlo()">🎲 Correr Monte Carlo (1000 iteraciones)</button>
         <button class="btn" onclick="resetSim()" style="font-size:11px">↺ Reset</button>
       </div>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1.5rem;line-height:1.7">
       Usa los controles para inyectar aceleración/desaceleración logarítmica a los <strong>votos que faltan contar</strong>. 
-      Al presionar <strong>Monte Carlo</strong>, el navegador simulará 1,000 posibles universos de conteo basados en la volatilidad histórica de cada candidato, revelando los escenarios pesimistas y optimistas.
+      Al presionar <strong>Monte Carlo</strong>, el navegador simulará 1,000 posibles universos de conteo basados en la volatilidad de cada candidato, revelando las bandas de confianza.
     </p>
     
     <div class="sim-grid" id="simControls"></div>
 
     <div class="ptitle" style="margin-top:1rem; border-top:1px solid var(--border); padding-top:1.5rem">
-        Impacto de la Simulación en la Proyección Final
+        Impacto del Momentum en la Proyección Final
     </div>
     <div class="chart-box" style="height:350px">
       <canvas id="simC" role="img"></canvas>
     </div>
   </div>
 
-  <div class="panel full" id="mcPanel" style="display:none">
-      <div class="ptitle">🎲 Análisis de Riesgo Monte Carlo (Distribución Normal sobre 1000 Escenarios)</div>
+  <div class="panel full" id="mcPanel" style="display:none; margin-top:1rem;">
+      <div class="ptitle">🎲 Análisis de Riesgo Monte Carlo (1000 Trayectorias por Candidato)</div>
+      
+      <div id="mcFiltersContainer" style="margin-bottom: 12px; padding: 10px; background: var(--surface2); border-radius: var(--r);">
+          </div>
+
+      <div class="chart-box" style="height:400px; display:none; margin-bottom: 1rem;" id="mcChartBox">
+          <canvas id="mcChartC" role="img"></canvas>
+      </div>
+
       <div class="mc-grid" id="mcResults"></div>
       <div class="evo-nota" style="margin-top:15px">
           <strong>P05 (Piso):</strong> Escenario pesimista (hay un 95% de probabilidad de que el candidato supere este número).<br>
+          <strong>P50 (Mediana):</strong> La tendencia central o escenario base (línea gruesa en el gráfico).<br>
           <strong>P95 (Techo):</strong> Escenario optimista (hay solo un 5% de probabilidad de que el candidato supere este número).
       </div>
   </div>
@@ -448,11 +458,15 @@ const TOP6 = [
 
 let DATA = null, selReg = null;
 let donutChart = null, evoChart = null, evoVotesChart = null, simChart = null;
+let mcChart = null; // Nuevo gráfico Monte Carlo
 let geoJsonData = null; 
 
 let hmSelectedCands = null;
 let simMultipliers = {};
 TOP6.forEach(c => simMultipliers[c.match] = 0.0);
+
+// Multi-select para Monte Carlo (Por defecto los 3 primeros)
+let mcSelectedCands = TOP6.slice(0, 3).map(c => c.match);
 
 async function doRefresh() {
   const btn=document.getElementById("refreshBtn");
@@ -540,7 +554,7 @@ function render() {
   if (document.getElementById("sec-evolucion").classList.contains("active")) { renderEvo(); renderEvoHeatmap(); }
   if (document.getElementById("sec-regiones").classList.contains("active"))   renderMapAndRegions();
   if (document.getElementById("sec-proyeccion").classList.contains("active"))  renderProyeccion();
-  if (document.getElementById("sec-econometria").classList.contains("active"))  renderSimulacion();
+  if (document.getElementById("sec-econometria").classList.contains("active")) renderSimulacion();
   setPill(DATA.fuente);
 }
 
@@ -1150,6 +1164,22 @@ function _calcHeatmapRates() {
     return rates;
 }
 
+function renderMcFilters() {
+    let filterHtml = `<div class="hm-filters"><div class="hm-filters-title">Mostrar Trayectorias en Gráfico:</div>`;
+    TOP6.forEach(c => {
+        const isChecked = mcSelectedCands.includes(c.match) ? "checked" : "";
+        filterHtml += `<label><input type="checkbox" value="${c.match}" onchange="toggleMcFilter(this)" ${isChecked}><span style="color:${c.color}">■</span> ${c.nombre.split(" ").at(-1)}</label>`;
+    });
+    filterHtml += `</div>`;
+    document.getElementById("mcFiltersContainer").innerHTML = filterHtml;
+}
+
+window.toggleMcFilter = (cb) => {
+    if (cb.checked) mcSelectedCands.push(cb.value);
+    else mcSelectedCands = mcSelectedCands.filter(n => n !== cb.value);
+    if (window.lastMcData) _drawMcChart(window.lastMcData);
+};
+
 function renderSimulacion() {
     const sContainer = document.getElementById("simControls");
     const heatRates = _calcHeatmapRates();
@@ -1200,6 +1230,8 @@ window.applyHeatmapToSim = () => {
 window.resetSim = () => {
     TOP6.forEach(c => { simMultipliers[c.match] = 0; });
     document.getElementById("mcPanel").style.display = "none";
+    if (mcChart) { mcChart.destroy(); mcChart = null; }
+    window.lastMcData = null;
     renderSimulacion();
 };
 
@@ -1248,7 +1280,6 @@ function _drawSimChart() {
 }
 
 // ── MONTE CARLO SIMULATOR ──
-// Implementación Edge Computing: ejecuta 1,000 caminos aleatorios gaussianos (Box-Muller)
 function randomNormal(mean, stdDev) {
     let u = 1 - Math.random();
     let v = Math.random();
@@ -1260,12 +1291,9 @@ window.runMonteCarlo = () => {
     const pData = calculateProjectionData(simMultipliers);
     if(!pData) return;
     
-    // 1. Calculamos Volatilidad Histórica proxy (Desviación estándar simple del share)
-    // Para simplificar en JS sin histórico de share, asignamos una volatilidad base del 2% del share 
-    // y la escalamos según el momentum que el usuario haya inyectado.
-    
     const ITERS = 1000;
     const mcResults = {};
+    const trajectories = {};
     
     TOP6.forEach(c => {
         let resultsArray = new Float32Array(ITERS);
@@ -1273,22 +1301,25 @@ window.runMonteCarlo = () => {
         let proyBase = pData.sumCandProy[c.match] || 0;
         let extraProy = proyBase - actual;
         
-        // Volatilidad: asume +- 15% de error sobre los votos que faltan
+        // Volatilidad: asume +- 15% de error estadístico sobre los votos que faltan
         let baseVol = extraProy * 0.15; 
         
         for(let i=0; i<ITERS; i++){
-            // Simula los votos extra con distribución normal
             let simExtra = randomNormal(extraProy, baseVol);
             resultsArray[i] = actual + Math.max(0, simExtra); 
         }
         
+        trajectories[c.match] = Array.from(resultsArray);
         resultsArray.sort();
         mcResults[c.match] = {
+            actual: actual,
             p05: resultsArray[Math.floor(ITERS * 0.05)],
             p50: resultsArray[Math.floor(ITERS * 0.50)],
             p95: resultsArray[Math.floor(ITERS * 0.95)],
         };
     });
+    
+    window.lastMcData = { mcResults, trajectories };
     
     const mcHtml = TOP6.map(c => {
         let res = mcResults[c.match];
@@ -1296,7 +1327,7 @@ window.runMonteCarlo = () => {
         <div class="mc-card" style="border-color:${c.color}">
             <div class="mc-title" style="color:${c.color}">${c.nombre}</div>
             <div class="mc-row"><span style="color:var(--muted)">Techo (P95):</span> <strong>${Math.round(res.p95).toLocaleString("es-PE")}</strong></div>
-            <div class="mc-row"><span style="color:var(--text)">Base (P50):</span> <strong>${Math.round(res.p50).toLocaleString("es-PE")}</strong></div>
+            <div class="mc-row"><span style="color:var(--text)">Mediana (P50):</span> <strong>${Math.round(res.p50).toLocaleString("es-PE")}</strong></div>
             <div class="mc-row"><span style="color:var(--muted)">Piso (P05):</span> <strong>${Math.round(res.p05).toLocaleString("es-PE")}</strong></div>
         </div>
         `;
@@ -1304,10 +1335,83 @@ window.runMonteCarlo = () => {
     
     document.getElementById("mcResults").innerHTML = mcHtml;
     document.getElementById("mcPanel").style.display = "block";
+    document.getElementById("mcChartBox").style.display = "block";
     
-    // Scrollear hacia los resultados
+    renderMcFilters();
+    _drawMcChart(window.lastMcData);
+    
     document.getElementById("mcPanel").scrollIntoView({behavior: "smooth"});
 };
+
+function _drawMcChart(data) {
+    const { mcResults, trajectories } = data;
+    const isDark = matchMedia("(prefers-color-scheme:dark)").matches;
+    const tc = isDark ? "rgba(255,255,255,.6)" : "rgba(0,0,0,.6)";
+    const gc = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.06)";
+
+    const datasets = [];
+
+    TOP6.forEach(c => {
+        if (!mcSelectedCands.includes(c.match)) return;
+
+        const actual = mcResults[c.match].actual;
+        const traj = trajectories[c.match];
+
+        // Muestra de ~150 trayectorias para no saturar el Canvas
+        const sampleSize = 150;
+        const step = Math.floor(traj.length / sampleSize) || 1;
+
+        for (let i = 0; i < traj.length; i += step) {
+            datasets.push({
+                label: c.nombre + ' Sim',
+                data: [actual, traj[i]],
+                borderColor: c.color + '15', // Transparencia alta para crear nube de densidad
+                borderWidth: 1,
+                pointRadius: 0,
+                tension: 0,
+                fill: false,
+            });
+        }
+
+        // Línea gruesa de la Mediana
+        datasets.push({
+            label: c.nombre + ' (Mediana)',
+            data: [actual, mcResults[c.match].p50],
+            borderColor: c.color,
+            borderWidth: 3,
+            pointRadius: 4,
+            pointBackgroundColor: c.color,
+            tension: 0,
+            fill: false
+        });
+    });
+
+    if (mcChart) mcChart.destroy();
+    mcChart = new Chart(document.getElementById("mcChartC"), {
+        type: 'line',
+        data: {
+            labels: ["Votos Actuales", "Proyección Final (1000 Escenarios)"],
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false, 
+            interaction: { mode: 'nearest', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    filter: function(ti) { return ti.dataset.borderWidth === 3; },
+                    callbacks: { label: i => ` ${i.dataset.label}: ${i.raw.toLocaleString("es-PE")} votos` }
+                }
+            },
+            scales: {
+                x: { grid: { color: gc }, ticks: { color: tc, font:{weight:'600'} } },
+                y: { grid: { color: gc }, ticks: { color: tc, callback: v=>(v/1000000).toFixed(2)+"M" } }
+            }
+        }
+    });
+}
 
 function setPill(f) {
   const el = document.getElementById("sourcePill");

@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Nube v31 (Evasión WAF Cloudflare para Render)
+ONPE 2026 — Proxy Nube v32 (Evasión WAF Cloudflare para Render)
 """
 
 import http.server, json, threading, time
-import urllib.request, urllib.error
+import urllib.request, urllib.error, urllib.parse
 import gzip, os, sys, concurrent.futures, unicodedata, ssl
 from datetime import datetime, timezone
 
 PORT        = int(os.environ.get("PORT", 8765))
 REFRESH_SEC = 25
-CACHE_FILE  = "onpe_cache_v31.json"
+CACHE_FILE  = "onpe_cache_v32.json"
 HTML_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "onpe_2026.html")
 BASE        = "https://resultadoelectoral.onpe.gob.pe/presentacion-backend"
 
@@ -30,7 +30,6 @@ UBIGEOS = {
     "250000": "Ucayali", "900000": "Extranjero"
 }
 
-# Encabezados Stealth para engañar al Firewall de la ONPE desde Render
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
@@ -57,7 +56,6 @@ _cache = None
 _lock  = threading.Lock()
 _is_refreshing = False
 
-# Contexto SSL ignorando validación estricta gubernamental
 CTX = ssl.create_default_context()
 CTX.check_hostname = False
 CTX.verify_mode = ssl.CERT_NONE
@@ -80,8 +78,7 @@ def _get_json(url, retries=2):
                 return None
             time.sleep(1.5)
         except Exception as e:
-            if attempt == retries: 
-                return None
+            if attempt == retries: return None
             time.sleep(1)
     return None
 
@@ -165,7 +162,6 @@ def fetch_region_worker(ubigeo, nombre):
     vV = avance.get("votosValidos", 0)
     if vV == 0: vV = sum(c["votos"] for c in cands)
     
-    # Filtro Anti-Cruce: Ninguna jurisdicción sola llega a 85,000 actas
     if aT > 85000: return None
         
     return {
@@ -261,7 +257,7 @@ def refresh_loop():
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
-        pass # Silenciamos logs HTTP para no llenar los logs de Render
+        pass 
             
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -291,6 +287,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif path == "/api/status":
             self._json({"is_refreshing": _is_refreshing})
             
+        elif path == "/api/mapa":
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "peruLow.json"), "rb") as f:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self._cors(); self.end_headers(); self.wfile.write(f.read())
+                
         elif path in ("/", "/index.html"):
             if os.path.exists(HTML_FILE):
                 with open(HTML_FILE, "rb") as f: content = f.read()
@@ -302,10 +304,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers()
 
 if __name__ == "__main__":
-    # Limpia archivos conflictivos de versiones anteriores
-    for cf in ["onpe_cache.json", "onpe_cache_v24.json", "onpe_cache_v25.json", "onpe_cache_v26.json"]:
-        if os.path.exists(cf): os.remove(cf)
-        
     _load_cache()
     threading.Thread(target=_do_refresh, daemon=True).start()
     threading.Thread(target=refresh_loop, daemon=True).start()
