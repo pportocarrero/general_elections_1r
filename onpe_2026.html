@@ -177,6 +177,25 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
 
 .app-footer {text-align: center;margin-top: 3rem;padding-top: 1.5rem;border-top: 1px solid var(--border);font-size: 12px;color: var(--muted);line-height: 1.6;}
 .app-footer a {color: var(--blue);text-decoration: none;font-weight: 600;}
+
+/* Map specific styling */
+.map-tooltip {
+  position: absolute;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  padding: 8px 12px;
+  border-radius: 8px;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  font-size: 12px;
+  transition: opacity 0.15s;
+  z-index: 1000;
+  color: var(--text);
+}
+.map-tooltip .title { font-weight: 700; margin-bottom: 4px; font-size: 13px; }
+.map-tooltip .lider { font-weight: 600; display: flex; align-items: center; gap: 5px; margin-bottom: 2px;}
+.map-legend-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border); }
 </style>
 </head>
 <body>
@@ -318,7 +337,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
       <button class="btn green" onclick="exportTableToCSV('Proyeccion_ONPE_2026.csv')">📥 Descargar Excel (CSV)</button>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1rem;line-height:1.7">
-      Matemática estricta: Usa los Votos Válidos Oficiales de cada región. Estima los votos faltantes y asigna a cada candidato una cuota idéntica a su participación actual en esa región en específico.<br>
+      Matemática estricta: Usa los Votos Válidos Oficiales de cada jurisdicción. Estima los votos faltantes y asigna a cada candidato una cuota idéntica a su participación actual en esa región en específico.<br>
       <strong>(Proyección Final = Voto Actual + Votos Estimados Faltantes).</strong>
     </p>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:.65rem 1rem;
@@ -332,7 +351,7 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     </div>
   </div>
   <div class="panel full" id="projNational" style="display:none">
-    <div class="ptitle">🇵🇪 Proyección Nacional Total (Suma Exacta de Regiones + Auto-completado)
+    <div class="ptitle">🇵🇪 Proyección Nacional Total (Suma Exacta y Cuadrada)
       <span style="font-size:11px;color:var(--faint);font-weight:400;text-transform:none" id="projCoverage"></span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px" id="projNatGrid"></div>
@@ -343,10 +362,13 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
   <div class="panel full" style="margin-bottom:1rem">
     <div class="ptitle">
       <span>Simulador de Momentum de Votos Faltantes</span>
-      <button class="btn purple" onclick="applyHeatmapToSim()">🔥 Usar Momentum del Mapa de Calor</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn purple" onclick="applyHeatmapToSim()">🔥 Usar última tasa log. (Mapa de Calor)</button>
+        <button class="btn" onclick="resetSim()" style="font-size:11px">↺ Resetear</button>
+      </div>
     </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:1.5rem;line-height:1.7">
-      Ajusta qué tan rápido o lento crecerá cada candidato en lo que queda del escrutinio nacional. Un modificador de <strong>+10%</strong> significa que el candidato captará un 10% más de votos faltantes de lo que su tendencia actual proyecta.
+      Ajusta qué tan rápido o lento crecerá cada candidato sobre los <strong>votos que faltan contar</strong>. Un modificador de <strong>+10%</strong> significa que el candidato captará un 10% más de votos faltantes de lo que su tendencia regional actual proyecta.
     </p>
     
     <div class="sim-grid" id="simControls"></div>
@@ -359,8 +381,6 @@ code{font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:2px
     </div>
   </div>
 </div>
-
-<div id="mapTooltip" class="map-tooltip"></div>
 
 <div class="app-footer">
   Creado por Pedro Portocarrero con fines académicos e informativos.<br>
@@ -413,8 +433,6 @@ let donutChart = null, evoChart = null, evoVotesChart = null, simChart = null;
 let geoJsonData = null; 
 
 let hmSelectedCands = null;
-
-// Estados para Simulación
 let simMultipliers = {};
 TOP6.forEach(c => simMultipliers[c.match] = 0.0);
 
@@ -426,7 +444,6 @@ async function doRefresh() {
   
   try {
     await fetch(`${PROXY}/api/refresh`);
-    
     let isRefreshing = true;
     let attempts = 0;
     while(isRefreshing && attempts < 30) { 
@@ -435,7 +452,6 @@ async function doRefresh() {
         isRefreshing = st.is_refreshing;
         attempts++;
     }
-
     const d = await fetch(`${PROXY}/api/datos`).then(r=>r.json());
     DATA = d;
     addEvoPoint(d);
@@ -445,7 +461,6 @@ async function doRefresh() {
                 d.fuente==="api_onpe_parcial"  ? "🟡 ONPE parcial" : "⚠️ datos locales";
     setAlert("ok", `${src} — ${(+d.pctActas).toFixed(3)}% de actas · ${d.regiones?.length||0} regiones cargadas`);
     setTimeout(()=>setAlert("",""), 6000);
-    
   } catch(e) {
     setAlert("warn", `⚠️ <strong>Proxy no responde.</strong> Revisa el backend en Render.`);
   } finally {
@@ -479,13 +494,9 @@ function addEvoPoint(d) {
   const lastPct   = +lastLabel.replace('%','');
   
   let isUpdate = false;
-  if (Math.abs(pct - lastPct) <= 0.001) {
-      isUpdate = true;
-  } else if (pct < lastPct) {
-      return; 
-  } else {
-      EVO.labels.push(pct.toFixed(3)+"%");
-  }
+  if (Math.abs(pct - lastPct) <= 0.001) isUpdate = true;
+  else if (pct < lastPct) return; 
+  else EVO.labels.push(pct.toFixed(3)+"%");
 
   EVO.top7.forEach((cm) => {
     const c = _findCand(d.candidatos || [], cm);
@@ -508,10 +519,7 @@ function render() {
   renderCands();
   renderResumen();
   renderDonut();
-  if (document.getElementById("sec-evolucion").classList.contains("active")) {
-      renderEvo();
-      renderEvoHeatmap();
-  }
+  if (document.getElementById("sec-evolucion").classList.contains("active")) { renderEvo(); renderEvoHeatmap(); }
   if (document.getElementById("sec-regiones").classList.contains("active"))   renderMapAndRegions();
   if (document.getElementById("sec-proyeccion").classList.contains("active"))  renderProyeccion();
   if (document.getElementById("sec-simulacion").classList.contains("active"))  renderSimulacion();
@@ -551,22 +559,12 @@ function processCandidatos(dataCands) {
   let otrosPct = 0;
 
   [...dataCands].sort((a,b)=>b.pct-a.pct).forEach(c => {
-    if (+c.pct >= 1.0) {
-      mainCands.push(c);
-    } else {
-      otrosVotos += (+c.votos || 0);
-      otrosPct += (+c.pct || 0);
-    }
+    if (+c.pct >= 1.0) { mainCands.push(c); } 
+    else { otrosVotos += (+c.votos || 0); otrosPct += (+c.pct || 0); }
   });
 
   if (otrosVotos > 0 || otrosPct > 0) {
-    mainCands.push({
-      nombre: "Otros",
-      partido: "Agrupaciones < 1%",
-      votos: otrosVotos,
-      pct: otrosPct,
-      isOtros: true
-    });
+    mainCands.push({ nombre: "Otros", partido: "Agrupaciones < 1%", votos: otrosVotos, pct: otrosPct, isOtros: true });
   }
   return mainCands;
 }
@@ -581,26 +579,15 @@ function renderCands() {
     const col = c.isOtros ? "#8b8b8b" : (COLORS[i]||COLORS[COLORS.length - 1]);
     const bw  = (c.pct/max*100).toFixed(1);
     const rc  = (!c.isOtros && i===0) ? "r1" : (!c.isOtros && i===1) ? "r2" : (!c.isOtros && i===2) ? "r3" : "";
-    const pctEmitidos = totalEmitidos>0 && c.votos>0
-      ? `<div class="cpct-emitidos">${((c.votos/totalEmitidos)*100).toFixed(2)}% s/emitidos</div>` : "";
-    const votos = c.votos>0
-      ? `<div class="cvotos">${c.votos.toLocaleString("es-PE")} votos</div>` : "";
+    const pctEmitidos = totalEmitidos>0 && c.votos>0 ? `<div class="cpct-emitidos">${((c.votos/totalEmitidos)*100).toFixed(2)}% s/emitidos</div>` : "";
+    const votos = c.votos>0 ? `<div class="cvotos">${c.votos.toLocaleString("es-PE")} votos</div>` : "";
     const badge = c.isOtros ? "+" : (i+1);
 
     return `<div class="crow ${rc}">
       <div class="rank-badge" style="background:${col}">${badge}</div>
-      <div class="cinfo">
-        <div class="cname">${c.nombre}</div>
-        <div class="cparty">${c.partido}</div>
-        ${votos}
-      </div>
-      <div class="cbar-wrap">
-        <div class="ctrack"><div class="cfill" style="width:${bw}%;background:${col}"></div></div>
-      </div>
-      <div class="cpct-col">
-        <div class="cpct" style="color:${col}">${(+c.pct).toFixed(3)}%</div>
-        ${pctEmitidos}
-      </div>
+      <div class="cinfo"><div class="cname">${c.nombre}</div><div class="cparty">${c.partido}</div>${votos}</div>
+      <div class="cbar-wrap"><div class="ctrack"><div class="cfill" style="width:${bw}%;background:${col}"></div></div></div>
+      <div class="cpct-col"><div class="cpct" style="color:${col}">${(+c.pct).toFixed(3)}%</div>${pctEmitidos}</div>
     </div>`;
   }).join("");
 }
@@ -625,11 +612,7 @@ function renderResumen() {
     {l:"Votos nulos",      v: vn>0?vn.toLocaleString("es-PE"):"–", s:pctN},
   ];
   document.getElementById("resumen").innerHTML = cards.map(c=>
-    `<div class="res-card">
-      <div class="res-label">${c.l}</div>
-      <div class="res-value">${c.v}</div>
-      ${c.s?`<div class="res-sub">${c.s}</div>`:""}
-    </div>`
+    `<div class="res-card"><div class="res-label">${c.l}</div><div class="res-value">${c.v}</div>${c.s?`<div class="res-sub">${c.s}</div>`:""}</div>`
   ).join("");
 }
 
@@ -638,22 +621,11 @@ function renderDonut() {
   if (!cands.length) return;
   const surf = getComputedStyle(document.body).getPropertyValue("--surface").trim()||"#fff";
   if (donutChart) donutChart.destroy();
-  
   const bgColors = cands.map((c, i) => c.isOtros ? "#8b8b8b" : (COLORS[i] || COLORS[COLORS.length-1]));
-
   donutChart = new Chart(document.getElementById("donutC"),{
     type:"doughnut",
-    data:{
-      labels: cands.map(c=>c.nombre),
-      datasets:[{data:cands.map(c=>+c.pct),backgroundColor:bgColors,borderWidth:2,borderColor:surf}]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,cutout:"58%",
-      plugins:{
-        legend:{display:true,position:"right",labels:{boxWidth:11,font:{size:11},padding:9}},
-        tooltip:{callbacks:{label:i=>` ${i.label}: ${i.parsed.toFixed(3)}%`}}
-      }
-    }
+    data:{labels: cands.map(c=>c.nombre), datasets:[{data:cands.map(c=>+c.pct),backgroundColor:bgColors,borderWidth:2,borderColor:surf}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:"58%",plugins:{legend:{display:true,position:"right",labels:{boxWidth:11,font:{size:11},padding:9}},tooltip:{callbacks:{label:i=>` ${i.label}: ${i.parsed.toFixed(3)}%`}}}}
   });
 }
 
@@ -668,11 +640,8 @@ function renderEvo() {
   const plotCands = EVO.top7.slice(0, 6);
 
   document.getElementById("evoLeg").innerHTML = plotCands.map(m=>
-    `<div class="leg">
-      <div class="ldot" style="background:${m.c}"></div>
-      <span class="leg-name">${m.n}</span>
-      <span style="color:var(--faint);font-size:10px">&nbsp;·&nbsp;${m.p}</span>
-    </div>`).join("");
+    `<div class="leg"><div class="ldot" style="background:${m.c}"></div><span class="leg-name">${m.n}</span><span style="color:var(--faint);font-size:10px">&nbsp;·&nbsp;${m.p}</span></div>`
+  ).join("");
 
   const dashes=[[],[],[6,3],[3,3],[8,4],[4,4],[2,3]];
 
@@ -682,137 +651,68 @@ function renderEvo() {
     data:{
       labels: labels,
       datasets: plotCands.map((m,i)=>({
-        label:m.n, data:m.d,
-        borderColor:m.c, backgroundColor:m.c+"15",
-        borderWidth:2.5, borderDash:dashes[i]||[],
-        pointRadius:5,pointHoverRadius:7,
-        pointBackgroundColor:m.c,pointBorderColor:"#fff",pointBorderWidth:1.5,
-        tension:.3,fill:false
+        label:m.n, data:m.d, borderColor:m.c, backgroundColor:m.c+"15", borderWidth:2.5, borderDash:dashes[i]||[],
+        pointRadius:5,pointHoverRadius:7,pointBackgroundColor:m.c,pointBorderColor:"#fff",pointBorderWidth:1.5,tension:.3,fill:false
       }))
     },
     options:{
-      responsive:true,maintainAspectRatio:false,
-      interaction:{mode:"index",intersect:false},
-      plugins:{
-        legend:{display:false},
-        tooltip:{
-          backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
-          titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
-          titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
-          itemSort: (a, b) => b.parsed.y - a.parsed.y, 
-          callbacks:{
-            title:i=>`Actas contabilizadas: ${i[0].label}`,
-            label:i=>` ${i.dataset.label}: ${i.parsed.y.toFixed(3)}%`
-          }
-        }
-      },
-      scales:{
-        x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxRotation:0}},
-        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>v.toFixed(1)+"%"},min:0,suggestedMax:26}
-      }
+      responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+      plugins:{legend:{display:false},tooltip:{backgroundColor:ttb,borderColor:ttd,borderWidth:.5,titleColor:isDark?"#e0e0e0":"#111",bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,itemSort:(a,b)=>b.parsed.y-a.parsed.y,callbacks:{title:i=>`Actas contabilizadas: ${i[0].label}`,label:i=>` ${i.dataset.label}: ${i.parsed.y.toFixed(3)}%`}}},
+      scales:{x:{grid:{color:gc},ticks:{color:tc,font:{size:11},maxRotation:0}},y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>v.toFixed(1)+"%"},min:0,suggestedMax:26}}
     }
   });
 
   if (evoVotesChart) evoVotesChart.destroy();
-  
   const rankDatasets = Array.from({length: 6}, (_, rankIndex) => ({
-      label: `Puesto ${rankIndex + 1}`,
-      data: [],
-      backgroundColor: [],
-      candNames: [],
-      borderRadius: 4,
-      borderWidth: 0
+      label: `Puesto ${rankIndex + 1}`, data: [], backgroundColor: [], candNames: [], borderRadius: 4, borderWidth: 0
   }));
 
   for (let i = 0; i < labels.length; i++) {
-      const candsAtTime = plotCands.map(c => ({ n: c.n, v: c.v[i], c: c.c }));
-      candsAtTime.sort((a, b) => b.v - a.v);
-      
+      const candsAtTime = plotCands.map(c => ({ n: c.n, v: c.v[i], c: c.c })).sort((a, b) => b.v - a.v);
       for (let rank = 0; rank < 6; rank++) {
           if (candsAtTime[rank]) {
-              rankDatasets[rank].data.push(candsAtTime[rank].v);
-              rankDatasets[rank].backgroundColor.push(candsAtTime[rank].c);
-              rankDatasets[rank].candNames.push(candsAtTime[rank].n);
+              rankDatasets[rank].data.push(candsAtTime[rank].v); rankDatasets[rank].backgroundColor.push(candsAtTime[rank].c); rankDatasets[rank].candNames.push(candsAtTime[rank].n);
           } else {
-              rankDatasets[rank].data.push(null);
-              rankDatasets[rank].backgroundColor.push("transparent");
-              rankDatasets[rank].candNames.push("");
+              rankDatasets[rank].data.push(null); rankDatasets[rank].backgroundColor.push("transparent"); rankDatasets[rank].candNames.push("");
           }
       }
   }
 
   evoVotesChart = new Chart(document.getElementById("evoVotesC"),{
-    type:"bar",
-    data:{
-      labels: labels,
-      datasets: rankDatasets
-    },
+    type:"bar", data:{labels: labels, datasets: rankDatasets},
     options:{
-      responsive:true,maintainAspectRatio:false,
-      interaction:{mode:"index",intersect:false},
-      plugins:{
-        legend:{display:false},
-        tooltip:{
-          backgroundColor:ttb,borderColor:ttd,borderWidth:.5,
-          titleColor:isDark?"#e0e0e0":"#111", bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",
-          titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,
-          itemSort: (a, b) => b.parsed.y - a.parsed.y, 
-          callbacks:{
-            title:i=>`Actas contabilizadas: ${i[0].label}`,
-            label:i=>{
-                const ds = i.dataset;
-                const idx = i.dataIndex;
-                const candName = ds.candNames[idx];
-                return ` ${candName}: ${i.parsed.y.toLocaleString("es-PE")} votos`;
-            }
-          }
-        }
-      },
-      scales:{
-        x:{grid:{display:false},ticks:{color:tc,font:{size:11},maxRotation:0}},
-        y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>(v/1000000).toFixed(1)+"M"}}
-      }
+      responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},
+      plugins:{legend:{display:false},tooltip:{backgroundColor:ttb,borderColor:ttd,borderWidth:.5,titleColor:isDark?"#e0e0e0":"#111",bodyColor:isDark?"rgba(255,255,255,.65)":"rgba(0,0,0,.65)",titleFont:{size:12,weight:"600"},bodyFont:{size:12},padding:12,itemSort:(a,b)=>b.parsed.y-a.parsed.y,callbacks:{title:i=>`Actas contabilizadas: ${i[0].label}`,label:i=>{const ds=i.dataset;const idx=i.dataIndex;const candName=ds.candNames[idx];return ` ${candName}: ${i.parsed.y.toLocaleString("es-PE")} votos`;}}}},
+      scales:{x:{grid:{display:false},ticks:{color:tc,font:{size:11},maxRotation:0}},y:{grid:{color:gc},ticks:{color:tc,font:{size:11},callback:v=>(v/1000000).toFixed(1)+"M"}}}
     }
   });
 }
 
 window.toggleHmFilter = (cb) => {
-    if (cb.checked) hmSelectedCands.push(cb.value);
-    else hmSelectedCands = hmSelectedCands.filter(n => n !== cb.value);
+    if (cb.checked) hmSelectedCands.push(cb.value); else hmSelectedCands = hmSelectedCands.filter(n => n !== cb.value);
     renderEvoHeatmap();
 };
 
 function renderEvoHeatmap() {
   const labels = EVO.labels;
   const heatmapCandsPool = EVO.top7.slice(0, 6); 
-  
-  if (!hmSelectedCands) {
-      hmSelectedCands = EVO.top7.slice(1, 6).map(c => c.n); 
-  }
+  if (!hmSelectedCands) { hmSelectedCands = EVO.top7.slice(1, 6).map(c => c.n); }
 
-  let filterHtml = `<div class="hm-filters">
-                      <div class="hm-filters-title">Filtrar Candidatos:</div>`;
+  let filterHtml = `<div class="hm-filters"><div class="hm-filters-title">Filtrar Candidatos:</div>`;
   heatmapCandsPool.forEach(c => {
       const isChecked = hmSelectedCands.includes(c.n) ? "checked" : "";
-      filterHtml += `<label>
-                        <input type="checkbox" value="${c.n}" onchange="toggleHmFilter(this)" ${isChecked}>
-                        <span style="color:${c.c}">■</span> ${c.n}
-                     </label>`;
+      filterHtml += `<label><input type="checkbox" value="${c.n}" onchange="toggleHmFilter(this)" ${isChecked}><span style="color:${c.c}">■</span> ${c.n}</label>`;
   });
   filterHtml += `</div>`;
   document.getElementById("hmFiltersContainer").innerHTML = filterHtml;
 
   const cands = EVO.top7.filter(c => hmSelectedCands.includes(c.n));
-
   if (cands.length === 0) {
       document.getElementById("heatmapContainer").innerHTML = `<div style="padding:1rem;color:var(--faint);font-size:12px;">Selecciona al menos un candidato para calcular el mapa de calor.</div>`;
       return;
   }
 
-  let html = `<table class="heatmap-table">
-                <thead><tr>
-                  <th style="text-align:left">Candidato</th>`;
-  
+  let html = `<table class="heatmap-table"><thead><tr><th style="text-align:left">Candidato</th>`;
   for (let i = 1; i < labels.length; i++) html += `<th>${labels[i]}</th>`;
   html += `</tr></thead><tbody>`;
 
@@ -823,19 +723,12 @@ function renderEvoHeatmap() {
           if (prev === 0) return curr > 0 ? 100 : 0; 
           return Math.log(curr / prev) * 100;
       });
-      let minV = Math.min(...variations);
-      let maxV = Math.max(...variations);
-      let scale = d3.scaleLinear().domain([minV, maxV]).range(["#b3e5fc", "#ef9a9a"]);
-      scales.push(scale);
+      let minV = Math.min(...variations); let maxV = Math.max(...variations);
+      scales.push(d3.scaleLinear().domain([minV, maxV]).range(["#b3e5fc", "#ef9a9a"]));
   }
 
   cands.forEach(c => {
-      html += `<tr>
-                <td class="cand-name">
-                  <div style="display:flex;align-items:center;gap:6px">
-                    <div class="ldot" style="background:${c.c}"></div>${c.n}
-                  </div>
-                </td>`;
+      html += `<tr><td class="cand-name"><div style="display:flex;align-items:center;gap:6px"><div class="ldot" style="background:${c.c}"></div>${c.n}</div></td>`;
       for (let i = 1; i < labels.length; i++) {
           let prev = c.v[i-1], curr = c.v[i], diff = 0;
           if (prev === 0) diff = curr > 0 ? 100 : 0; else diff = Math.log(curr / prev) * 100;
@@ -1003,21 +896,19 @@ function calculateProjectionData(simMultipliers = null) {
     if (!originalRegs.length) return null;
 
     const activeCands = TOP6.filter((_,i) => projActive.has(i));
-    
-    // Creamos la lista de trabajo
     let regs = JSON.parse(JSON.stringify(originalRegs)); 
     
-    // 1. Extraemos los totales Nacionales Oficiales del Dashboard
+    // 1. Totales Nacionales Oficiales
     const natCont = +(DATA.actasContabilizadas || 0);
     const natTot  = +(DATA.actasTotales || 0);
     const natValidos = +(DATA.votosValidos || 0);
 
-    // 2. Sumamos todo lo que nos dieron las regiones buenas
+    // 2. Sumamos regiones buenas
     const sumRegCont = regs.reduce((s, r) => s + (+r.actasCont || 0), 0);
     const sumRegTot  = regs.reduce((s, r) => s + (+r.actasTot || 0), 0);
     const sumRegValidos = regs.reduce((s, r) => s + (+r.vValidos || 0), 0);
 
-    // 3. Calculamos la Diferencia Exacta para cuadrar al 100%
+    // 3. Faltantes exactos (Extranjero u omisiones ONPE)
     const missingCont = Math.max(0, natCont - sumRegCont);
     const missingTot  = Math.max(0, natTot - sumRegTot);
     const missingValidos = Math.max(0, natValidos - sumRegValidos);
@@ -1028,23 +919,16 @@ function calculateProjectionData(simMultipliers = null) {
             let cr = (r.candidatos||[]).find(x => x.nombre === c.nombre);
             return s + (cr ? +cr.votos : 0);
         }, 0);
-        
         let mVotos = Math.max(0, c.votos - sumRegVotosCand);
-        missingCands.push({
-            nombre: c.nombre, partido: c.partido, votos: mVotos, 
-            pct: missingValidos > 0 ? (mVotos / missingValidos * 100) : 0
-        });
+        missingCands.push({ nombre: c.nombre, partido: c.partido, votos: mVotos, pct: missingValidos > 0 ? (mVotos / missingValidos * 100) : 0 });
     });
 
-    // Inyectar Faltantes (Lima Metropolitana / Extranjero / Omisiones) para cuadrar
     if (missingCont > 0 || missingValidos > 0) {
         regs.push({
-            nombre: "LIMA MET. / FALTANTES (Auto-completado)",
+            nombre: "FALTANTES NACIONALES (Auto-cuadre)",
             pctActas: missingTot > 0 ? (missingCont / missingTot * 100) : 0,
-            actasCont: missingCont,
-            actasTot: missingTot,
-            vValidos: missingValidos,
-            candidatos: missingCands
+            actasCont: missingCont, actasTot: missingTot, vValidos: missingValidos,
+            candidatos: missingCands, is_virtual: true
         });
     }
 
@@ -1058,7 +942,6 @@ function calculateProjectionData(simMultipliers = null) {
         const pctAc = aT > 0 ? (aC / aT * 100) : (+r.pctActas || 0);
         const vValidos = +(r.vValidos || 0); 
         
-        // Votos válidos que faltan procesar
         let vFalt = (aC > 0 && aT > aC) ? Math.round(vValidos * (aT - aC) / aC) : 0;
         vFalt = Math.max(0, vFalt);
 
@@ -1068,8 +951,6 @@ function calculateProjectionData(simMultipliers = null) {
         const candData = activeCands.map(cand => {
             const cr = _findCand(r.candidatos||[], cand);
             const vActual = +(cr?.votos||0);
-            
-            // Share dentro de la región
             const candShare = vValidos > 0 ? (vActual / vValidos) : 0;
             
             let shareModificado = candShare;
@@ -1077,7 +958,6 @@ function calculateProjectionData(simMultipliers = null) {
                 shareModificado = candShare * (1 + (simMultipliers[cand.match] / 100));
             }
             
-            // Cuantos votos extra va a ganar
             const vExtra = Math.max(0, Math.round(vFalt * shareModificado));
             const total = vActual + vExtra;
 
@@ -1090,7 +970,7 @@ function calculateProjectionData(simMultipliers = null) {
         return { r, pctAc, vValidos, vFalt, candData };
     });
 
-    return { activeCands, rowsData, sumVotosCont, sumVotosFalt, sumCandActual, sumCandProy };
+    return { activeCands, rowsData, sumVotosCont, sumVotosFalt, sumCandActual, sumCandProy, natValidos };
 }
 
 function renderProyeccion() {
@@ -1113,7 +993,7 @@ function renderProyeccion() {
     return;
   }
 
-  const { activeCands, rowsData, sumVotosCont, sumVotosFalt, sumCandActual, sumCandProy } = pData;
+  const { activeCands, rowsData, sumVotosCont, sumVotosFalt, sumCandActual, sumCandProy, natValidos } = pData;
 
   const thStyle = 'class="proj-th"';
   document.getElementById("projHead").innerHTML = `<tr>
@@ -1127,11 +1007,10 @@ function renderProyeccion() {
 
   let regsConDatos = 0;
   const rows = rowsData.map(rd => {
-    if (rd.pctAc > 0 && !rd.r.nombre.includes("Faltante")) regsConDatos++;
-    
+    if (!rd.r.is_virtual) regsConDatos++;
     let rowContent = "";
     rd.candData.forEach(cd => {
-        rowContent += `<td class="proj-td">${cd.vActual>0 ? cd.vActual.toLocaleString("es-PE") : "–"} ${cd.share>0 ? `<span class="proj-badge" style="background:${cd.cand.color}22;color:${cd.cand.color}">${cd.share.toFixed(3)}%</span>` : ""}</td>`;
+        rowContent += `<td class="proj-td">${cd.vActual>0 ? cd.vActual.toLocaleString("es-PE") : "–"} ${cd.share>0 ? `<span class="proj-badge" style="background:${cd.cand.color}22;color:${cd.cand.color}">${(cd.share*100).toFixed(3)}%</span>` : ""}</td>`;
         if (rd.pctAc>0 && rd.pctAc<99.9) {
             rowContent += `<td class="proj-td" style="font-weight:600;color:${cd.cand.color}">${cd.total.toLocaleString("es-PE")} <br><small style="color:var(--muted);font-weight:400;font-size:10px">+${cd.vExtra.toLocaleString("es-PE")} extra</small></td>`;
         } else {
@@ -1139,10 +1018,11 @@ function renderProyeccion() {
         }
     });
 
-    const bgStyle = rd.r.nombre.includes("Faltante") ? 'style="background:rgba(0,0,0,0.02)"' : '';
+    const bgStyle = rd.r.is_virtual ? 'style="background:#fef3e2"' : '';
+    const n = rd.r.is_virtual ? `⚠️ ${rd.r.nombre}` : rd.r.nombre;
 
     return `<tr class="proj-tr" ${bgStyle}>
-      <td class="proj-td" style="text-align:left">${rd.r.nombre}</td>
+      <td class="proj-td" style="text-align:left;font-weight:700">${n}</td>
       <td class="proj-td">${rd.pctAc>0?rd.pctAc.toFixed(3)+"%":"–"}</td>
       <td class="proj-td">${rd.vValidos>0?rd.vValidos.toLocaleString("es-PE"):"–"}</td>
       <td class="proj-td" style="color:var(--amber)">${rd.vFalt>0?rd.vFalt.toLocaleString("es-PE"):"–"}</td>
@@ -1151,20 +1031,20 @@ function renderProyeccion() {
   }).join("");
 
   let tfootHtml = `<tr class="proj-tr" style="background:var(--surface2);font-weight:700;border-top:2px solid var(--border)">
-    <td class="proj-td" style="text-align:left">TOTAL NACIONAL</td>
+    <td class="proj-td" style="text-align:left;font-size:14px">TOTAL NACIONAL</td>
     <td class="proj-td">${DATA.pctActas ? (+DATA.pctActas).toFixed(3)+"%" : "–"}</td>
     <td class="proj-td">${sumVotosCont.toLocaleString("es-PE")}</td>
     <td class="proj-td" style="color:var(--amber)">${sumVotosFalt.toLocaleString("es-PE")}</td>
   `;
   activeCands.forEach(cand => {
       tfootHtml += `<td class="proj-td">${sumCandActual[cand.match].toLocaleString("es-PE")}</td>`;
-      tfootHtml += `<td class="proj-td" style="color:${cand.color}">${sumCandProy[cand.match].toLocaleString("es-PE")}</td>`;
+      tfootHtml += `<td class="proj-td" style="color:${cand.color};font-size:14px">${sumCandProy[cand.match].toLocaleString("es-PE")}</td>`;
   });
   tfootHtml += `</tr>`;
 
   document.getElementById("projBody").innerHTML = rows;
   document.getElementById("projFoot").innerHTML = tfootHtml;
-  document.getElementById("projCoverage").textContent = ` · Cuadre exacto (Suma Nacional)`;
+  document.getElementById("projCoverage").textContent = ` · Cuadre exacto (${regsConDatos} regiones detectadas)`;
 
   const totalFinal = sumVotosCont + sumVotosFalt;
   const natCards = activeCands.map(c => {
@@ -1268,24 +1148,15 @@ function renderSimulacion() {
         <div class="sim-card" style="border-color:${c.color}">
             <div class="sim-cname" style="font-size:12px">
                 ${c.nombre}
-                <span class="sim-heatval" id="shval-${c.match}"
-                      style="font-size:10px;color:${rateColor}">tasa log: ${rateStr}</span>
+                <span class="sim-heatval" id="shval-${c.match}" style="font-size:10px;color:${rateColor}">tasa log: ${rateStr}</span>
             </div>
             <div style="font-size:10px;color:var(--faint);margin-bottom:4px">${c.partido}</div>
-            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">
-                Modificador sobre ritmo de votos faltantes:
-            </div>
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Modificador de share regional:</div>
             <div class="sim-slider-row">
                 <span style="font-size:10px;color:var(--faint);min-width:28px;text-align:right">–50%</span>
-                <input type="range" min="-50" max="200" value="${curVal.toFixed(1)}" step="0.5"
-                       class="sim-slider" id="slider-${c.match}" style="accent-color:${c.color}"
-                       oninput="updateSimVal('${c.match}', this.value)">
+                <input type="range" min="-50" max="200" value="${curVal.toFixed(1)}" step="0.5" class="sim-slider" id="slider-${c.match}" style="accent-color:${c.color}" oninput="updateSimVal('${c.match}', this.value)">
                 <span style="font-size:10px;color:var(--faint);min-width:32px">+200%</span>
-                <input type="text" class="sim-input" id="inp-${c.match}"
-                       value="${curVal > 0 ? '+' : ''}${curVal.toFixed(1)}%" readonly>
-            </div>
-            <div style="font-size:10px;color:var(--faint);margin-top:4px">
-                0% = tendencia lineal · +100% = ritmo acelerado al doble
+                <input type="text" class="sim-input" id="inp-${c.match}" value="${curVal > 0 ? '+' : ''}${curVal.toFixed(1)}%" readonly>
             </div>
         </div>`;
     }).join("");
@@ -1347,45 +1218,15 @@ function _drawSimChart() {
         data: {
             labels: labels,
             datasets: [
-                {
-                    label: 'Votos Actuales',
-                    data: dataActual,
-                    backgroundColor: bgColors,
-                    borderRadius: 4
-                },
-                {
-                    label: 'Proyección Oficial (Extra Faltante)',
-                    data: dataProyOficial,
-                    backgroundColor: bgColors.map(c => c + "66"), 
-                    borderRadius: 4
-                },
-                {
-                    label: 'Impacto de Simulación (Extra Simulado)',
-                    data: dataProySimulada,
-                    backgroundColor: bgColors.map(c => c + "33"),
-                    borderWidth: 2,
-                    borderColor: bgColors,
-                    borderDash: [5, 5],
-                    borderRadius: 4
-                }
+                { label: 'Votos Actuales', data: dataActual, backgroundColor: bgColors, borderRadius: 4 },
+                { label: 'Proyección Oficial (Extra Faltante)', data: dataProyOficial, backgroundColor: bgColors.map(c => c + "66"), borderRadius: 4 },
+                { label: 'Impacto de Simulación (Extra Simulado)', data: dataProySimulada, backgroundColor: bgColors.map(c => c + "33"), borderWidth: 2, borderColor: bgColors, borderDash: [5, 5], borderRadius: 4 }
             ]
         },
         options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                x: { stacked: true, ticks: { color: tc, callback: v=>(v/1000000).toFixed(1)+"M" } },
-                y: { stacked: true, ticks: { color: tc, font: {weight: '600'} } }
-            },
-            plugins: {
-                legend: { display: true, position: 'bottom', labels: {boxWidth: 12, font:{size:11}} },
-                tooltip: {
-                    callbacks: {
-                        label: i => ` ${i.dataset.label}: ${i.raw.toLocaleString("es-PE")} votos`
-                    }
-                }
-            }
+            indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+            scales: { x: { stacked: true, ticks: { color: tc, callback: v=>(v/1000000).toFixed(1)+"M" } }, y: { stacked: true, ticks: { color: tc, font: {weight: '600'} } } },
+            plugins: { legend: { display: true, position: 'bottom', labels: {boxWidth: 12, font:{size:11}} }, tooltip: { callbacks: { label: i => ` ${i.dataset.label}: ${i.raw.toLocaleString("es-PE")} votos` } } }
         }
     });
 }

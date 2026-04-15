@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v28 (Modo Stealth Anti-Cloudflare + Evasión SSL)
-Uso:  python3 onpe_proxy.py
+ONPE 2026 — Proxy de Producción (Render.com)
+Motor de extracción sigilosa, asíncrona y consolidación de datos.
 """
 
 import http.server, json, threading, time
@@ -9,18 +9,18 @@ import urllib.request, urllib.error, urllib.parse
 import gzip, os, sys, concurrent.futures, unicodedata, ssl
 from datetime import datetime, timezone
 
+# Render inyecta el puerto dinámicamente en la variable de entorno PORT
 PORT        = int(os.environ.get("PORT", 8765))
 REFRESH_SEC = 25
-CACHE_FILE  = "onpe_cache.json"
+CACHE_FILE  = "onpe_cache_prod.json"
 HTML_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "onpe_2026.html")
 BASE        = "https://resultadoelectoral.onpe.gob.pe/presentacion-backend"
 
 EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccion"
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
-EP_DEPTOS    = BASE + "/ubigeos/departamentos?idEleccion=10&idAmbitoGeografico=1"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# Las 26 Jurisdicciones Oficiales de ONPE (Lima dividida + Extranjero)
+# Las 27 Jurisdicciones Oficiales de ONPE (Lima desdoblada + Extranjero)
 UBIGEOS = {
     "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
     "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
@@ -33,21 +33,16 @@ UBIGEOS = {
     "250000": "Ucayali", "900000": "Extranjero"
 }
 
-# Encabezados exactos de Google Chrome para burlar Cloudflare
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0",
     "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "es-PE,es-419;q=0.9,es;q=0.8",
+    "Accept-Language": "es-PE,es;q=0.9",
     "Accept-Encoding": "gzip, deflate",
     "Connection": "keep-alive",
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-origin",
-    "Referer": "https://resultadoelectoral.onpe.gob.pe/presentacion/presidencial/resumen-general",
 }
 
 FALLBACK = {
-    "fuente": "respaldo_local", "timestamp": "2026-04-13T10:00:00",
+    "fuente": "inicializando", "timestamp": datetime.now(timezone.utc).isoformat(),
     "pctActas": 0, "actasContabilizadas": 0, "actasTotales": 92766,
     "votosEmitidos": 0, "votosValidos": 0, "candidatos": [], "regiones": []
 }
@@ -56,7 +51,7 @@ _cache = None
 _lock  = threading.Lock()
 _is_refreshing = False
 
-# Contexto SSL para ignorar certificados vencidos o inválidos del gobierno
+# Contexto SSL seguro para evitar bloqueos
 CTX = ssl.create_default_context()
 CTX.check_hostname = False
 CTX.verify_mode = ssl.CERT_NONE
@@ -65,9 +60,7 @@ def strip_accents(s):
     return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
 
 def _get_json(url, retries=2):
-    sep = "&" if "?" in url else "?"
-    cb_url = f"{url}{sep}_={int(time.time()*1000)}"
-    req = urllib.request.Request(cb_url, headers=HEADERS)
+    req = urllib.request.Request(url, headers=HEADERS)
     for attempt in range(retries + 1):
         try:
             with urllib.request.urlopen(req, timeout=12, context=CTX) as r:
@@ -75,16 +68,9 @@ def _get_json(url, retries=2):
                 if r.headers.get("Content-Encoding", "") == "gzip":
                     raw = gzip.decompress(raw)
                 return json.loads(raw.decode("utf-8", errors="replace"))
-        except urllib.error.HTTPError as e:
-            if attempt == retries:
-                print(f"  [X] BLOQUEADO por ONPE (Error {e.code}) en URL: {url.split('?')[0].split('/')[-1]}")
-                return None
-            time.sleep(1.5)
-        except Exception as e:
-            if attempt == retries: 
-                print(f"  [X] Error de conexión: {e}")
-                return None
-            time.sleep(1.5)
+        except Exception:
+            if attempt == retries: return None
+            time.sleep(1)
     return None
 
 def _unwrap(raw):
@@ -155,31 +141,34 @@ def parse_candidatos(raw):
 
 def fetch_region_worker(ubigeo, nombre):
     ambito = "2" if ubigeo == "900000" else "1"
-    
     url_part = f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&ubigeoNivel1={ubigeo}"
     url_tot  = f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&idUbigeoDepartamento={ubigeo}"
 
-    raw_part = _get_json(url_part)
-    raw_tot  = _get_json(url_tot)
-
-    cands, _, _ = parse_candidatos(raw_part)
-    avance = parse_avance(raw_tot)
+    cands, _, _ = parse_candidatos(_get_json(url_part))
+    avance = parse_avance(_get_json(url_tot))
 
     if not cands or not avance: return None
+    
+    aT = avance.get("actasTotales", 0)
+    vV = avance.get("votosValidos", 0)
+    if vV == 0: vV = sum(c["votos"] for c in cands)
+    
+    # Filtro Anti-Cruce: Ninguna región por sí sola llega a 80,000 actas
+    if aT > 80000: return None
         
     return {
         "nombre":    nombre.title(),
         "pctActas":  avance.get("pctActas", 0),
         "actasCont": avance.get("actasContabilizadas", 0),
-        "actasTot":  avance.get("actasTotales", 0),
-        "vValidos":  avance.get("votosValidos", 0),
+        "actasTot":  aT,
+        "vValidos":  vV,
         "lider":     cands[0]["nombre"],
         "pctLider":  cands[0]["pct"],
         "candidatos": cands,
     }
 
 def fetch_onpe():
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE (Modo Stealth)...")
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")
     result   = dict(FALLBACK)
     ok_count = 0
 
@@ -188,9 +177,6 @@ def fetch_onpe():
     if avance.get("pctActas", 0) > 0:
         result.update(avance)
         ok_count += 1
-        print(f"  ✓ Nacional: {avance['pctActas']:.3f}% actas")
-    else:
-        print("  ✗ Falló descarga Nacional")
 
     raw_cand = _get_json(EP_CANDIDATOS)
     if raw_cand:
@@ -201,14 +187,11 @@ def fetch_onpe():
             result["votosNulos"]   = nulos
             ok_count += 1
 
-    # Si la ONPE nos bloqueó a nivel nacional, abortamos para no borrar el caché viejo.
     if ok_count == 0:
-        print("  [!] Abortando ciclo: Servidor ONPE bloqueó la conexión.")
+        print("  ✗ Servidor ONPE bloqueado. Abortando para no dañar caché.")
         return None
 
-    print(f"  ✓ Descargando {len(UBIGEOS)} jurisdicciones oficiales...")
     regiones = []
-    
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         future_to_region = {executor.submit(fetch_region_worker, u, n): n for u, n in UBIGEOS.items()}
         for future in concurrent.futures.as_completed(future_to_region):
@@ -221,7 +204,6 @@ def fetch_onpe():
         final_regs_dict = {r["nombre"]: r for r in old_regs}
         for r in regiones: final_regs_dict[r["nombre"]] = r 
         result["regiones"] = sorted(final_regs_dict.values(), key=lambda x: strip_accents(x["nombre"]))
-        print(f"  ✓ {len(result['regiones'])} jurisdicciones actualizadas.")
 
     result["fuente"] = ("api_onpe" if ok_count >= 2 else "api_onpe_parcial")
     result["timestamp"] = datetime.now(timezone.utc).isoformat()
@@ -267,8 +249,7 @@ def refresh_loop():
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
-        if args and not any(x in str(args[0]) for x in ["/api/datos", "/api/status"]):
-            print(f"  GET {args[0]}")
+        pass # Silenciamos los logs HTTP para no saturar la consola de Render
             
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -321,12 +302,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers()
 
 if __name__ == "__main__":
-    if os.path.exists("onpe_cache.json"): os.remove("onpe_cache.json")
-    
     _load_cache()
     threading.Thread(target=_do_refresh, daemon=True).start()
     threading.Thread(target=refresh_loop, daemon=True).start()
     server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"\n  Dashboard Listo -> http://0.0.0.0:{PORT}")
+    print(f"==================================================")
+    print(f" ONPE 2026 DASHBOARD ARRANCADO EN PUERTO {PORT}")
+    print(f"==================================================")
     try: server.serve_forever()
     except KeyboardInterrupt: sys.exit(0)
