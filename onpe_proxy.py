@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONPE 2026 — Proxy Local v29 (Evasión SSL + Anti-Fuga Matemático)
+ONPE 2026 — Proxy Local v28 (Modo Stealth Anti-Cloudflare + Evasión SSL)
 Uso:  python3 onpe_proxy.py
 """
 
@@ -11,15 +11,16 @@ from datetime import datetime, timezone
 
 PORT        = int(os.environ.get("PORT", 8765))
 REFRESH_SEC = 25
-CACHE_FILE  = "onpe_cache_v29.json"
+CACHE_FILE  = "onpe_cache.json"
 HTML_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "onpe_2026.html")
 BASE        = "https://resultadoelectoral.onpe.gob.pe/presentacion-backend"
 
 EP_TOTALES   = BASE + "/resumen-general/totales?idEleccion=10&tipoFiltro=eleccion"
 EP_CANDIDATOS= BASE + "/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=eleccion"
+EP_DEPTOS    = BASE + "/ubigeos/departamentos?idEleccion=10&idAmbitoGeografico=1"
 EP_MAP_JSON  = "https://resultadoelectoral.onpe.gob.pe/assets/lib/amcharts5/geodata/json/peruLow.json"
 
-# 27 Jurisdicciones Oficiales Exactas
+# Las 26 Jurisdicciones Oficiales de ONPE (Lima dividida + Extranjero)
 UBIGEOS = {
     "010000": "Amazonas", "020000": "Áncash", "030000": "Apurímac",
     "040000": "Arequipa", "050000": "Ayacucho", "060000": "Cajamarca",
@@ -32,14 +33,17 @@ UBIGEOS = {
     "250000": "Ucayali", "900000": "Extranjero"
 }
 
+# Encabezados exactos de Google Chrome para burlar Cloudflare
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "es-PE,es;q=0.9",
+    "Accept-Language": "es-PE,es-419;q=0.9,es;q=0.8",
     "Accept-Encoding": "gzip, deflate",
-    "Referer": "https://resultadoelectoral.onpe.gob.pe/",
-    "Origin": "https://resultadoelectoral.onpe.gob.pe",
     "Connection": "keep-alive",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "Referer": "https://resultadoelectoral.onpe.gob.pe/presentacion/presidencial/resumen-general",
 }
 
 FALLBACK = {
@@ -52,7 +56,7 @@ _cache = None
 _lock  = threading.Lock()
 _is_refreshing = False
 
-# Contexto SSL para evadir bloqueos de Cloudflare/ONPE
+# Contexto SSL para ignorar certificados vencidos o inválidos del gobierno
 CTX = ssl.create_default_context()
 CTX.check_hostname = False
 CTX.verify_mode = ssl.CERT_NONE
@@ -71,11 +75,16 @@ def _get_json(url, retries=2):
                 if r.headers.get("Content-Encoding", "") == "gzip":
                     raw = gzip.decompress(raw)
                 return json.loads(raw.decode("utf-8", errors="replace"))
+        except urllib.error.HTTPError as e:
+            if attempt == retries:
+                print(f"  [X] BLOQUEADO por ONPE (Error {e.code}) en URL: {url.split('?')[0].split('/')[-1]}")
+                return None
+            time.sleep(1.5)
         except Exception as e:
             if attempt == retries: 
-                print(f"  [X] HTTP Error en: {url.split('?')[0][-30:]}")
+                print(f"  [X] Error de conexión: {e}")
                 return None
-            time.sleep(1)
+            time.sleep(1.5)
     return None
 
 def _unwrap(raw):
@@ -147,68 +156,57 @@ def parse_candidatos(raw):
 def fetch_region_worker(ubigeo, nombre):
     ambito = "2" if ubigeo == "900000" else "1"
     
-    urls = [
-        (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&ubigeoNivel1={ubigeo}",
-         f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&idUbigeoDepartamento={ubigeo}"),
-        (f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={ubigeo}",
-         f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=departamento&idUbigeoDepartamento={ubigeo}")
-    ]
+    url_part = f"{BASE}/eleccion-presidencial/participantes-ubicacion-geografica-nombre?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&ubigeoNivel1={ubigeo}"
+    url_tot  = f"{BASE}/resumen-general/totales?idEleccion=10&tipoFiltro=ubigeo_nivel_01&idAmbitoGeografico={ambito}&idUbigeoDepartamento={ubigeo}"
 
-    for url_c, url_t in urls:
-        cands, _, _ = parse_candidatos(_get_json(url_c))
-        avance = parse_avance(_get_json(url_t))
+    raw_part = _get_json(url_part)
+    raw_tot  = _get_json(url_tot)
 
-        if not cands or not avance: continue
+    cands, _, _ = parse_candidatos(raw_part)
+    avance = parse_avance(raw_tot)
+
+    if not cands or not avance: return None
         
-        actas_t = avance.get("actasTotales", 0)
-        
-        # === FILTRO ANTI-CRUCE DE DATOS INFALIBLE ===
-        # Ninguna región sola llega a 85,000 actas. Si devuelve eso, es un clon del total Nacional.
-        if actas_t > 85000: 
-            continue
-            
-        vValidos = avance.get("votosValidos", 0)
-        if vValidos == 0: vValidos = sum(c["votos"] for c in cands)
-            
-        return {
-            "nombre":    nombre.title(),
-            "pctActas":  avance.get("pctActas", 0),
-            "actasCont": avance.get("actasContabilizadas", 0),
-            "actasTot":  actas_t,
-            "vValidos":  vValidos,
-            "lider":     cands[0]["nombre"],
-            "pctLider":  cands[0]["pct"],
-            "candidatos": cands,
-        }
-    return None
+    return {
+        "nombre":    nombre.title(),
+        "pctActas":  avance.get("pctActas", 0),
+        "actasCont": avance.get("actasContabilizadas", 0),
+        "actasTot":  avance.get("actasTotales", 0),
+        "vValidos":  avance.get("votosValidos", 0),
+        "lider":     cands[0]["nombre"],
+        "pctLider":  cands[0]["pct"],
+        "candidatos": cands,
+    }
 
 def fetch_onpe():
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE...")
+    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Consultando ONPE (Modo Stealth)...")
+    result   = dict(FALLBACK)
     ok_count = 0
-    base_data = dict(FALLBACK)
 
     raw_tot = _get_json(EP_TOTALES)
     avance  = parse_avance(raw_tot)
     if avance.get("pctActas", 0) > 0:
-        base_data.update(avance)
+        result.update(avance)
         ok_count += 1
-        print(f"  ✓ Nacional: {avance['pctActas']:.3f}%")
+        print(f"  ✓ Nacional: {avance['pctActas']:.3f}% actas")
+    else:
+        print("  ✗ Falló descarga Nacional")
 
     raw_cand = _get_json(EP_CANDIDATOS)
     if raw_cand:
         cands, blancos, nulos = parse_candidatos(raw_cand)
         if cands:
-            base_data["candidatos"]  = cands
-            base_data["votosBlancos"] = blancos
-            base_data["votosNulos"]   = nulos
+            result["candidatos"]  = cands
+            result["votosBlancos"] = blancos
+            result["votosNulos"]   = nulos
             ok_count += 1
 
-    # Si todo falla (403), devolvemos None para no borrar el caché viejo
+    # Si la ONPE nos bloqueó a nivel nacional, abortamos para no borrar el caché viejo.
     if ok_count == 0:
-        print("  ✗ ONPE bloqueó la petición. Manteniendo datos anteriores.")
+        print("  [!] Abortando ciclo: Servidor ONPE bloqueó la conexión.")
         return None
 
-    print(f"  → Descargando {len(UBIGEOS)} jurisdicciones...")
+    print(f"  ✓ Descargando {len(UBIGEOS)} jurisdicciones oficiales...")
     regiones = []
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -217,17 +215,17 @@ def fetch_onpe():
             res = future.result()
             if res: regiones.append(res)
     
-    # Preservar las regiones del ciclo anterior que no cargaron en este
-    with _lock: old_regs = _cache.get("regiones", []) if _cache else []
-    final_regs_dict = {r["nombre"]: r for r in old_regs}
-    for r in regiones: final_regs_dict[r["nombre"]] = r 
-    
-    base_data["regiones"] = sorted(final_regs_dict.values(), key=lambda x: strip_accents(x["nombre"]))
-    print(f"  ✓ Regiones listas → {len(base_data['regiones'])}/{len(UBIGEOS)}")
+    if regiones:
+        regiones.sort(key=lambda x: strip_accents(x["nombre"]))
+        with _lock: old_regs = _cache.get("regiones", []) if _cache else []
+        final_regs_dict = {r["nombre"]: r for r in old_regs}
+        for r in regiones: final_regs_dict[r["nombre"]] = r 
+        result["regiones"] = sorted(final_regs_dict.values(), key=lambda x: strip_accents(x["nombre"]))
+        print(f"  ✓ {len(result['regiones'])} jurisdicciones actualizadas.")
 
-    base_data["fuente"] = ("api_onpe" if ok_count >= 2 else "api_onpe_parcial")
-    base_data["timestamp"] = datetime.now(timezone.utc).isoformat()
-    return base_data
+    result["fuente"] = ("api_onpe" if ok_count >= 2 else "api_onpe_parcial")
+    result["timestamp"] = datetime.now(timezone.utc).isoformat()
+    return result
 
 def _load_cache():
     global _cache
@@ -323,6 +321,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers()
 
 if __name__ == "__main__":
+    if os.path.exists("onpe_cache.json"): os.remove("onpe_cache.json")
+    
     _load_cache()
     threading.Thread(target=_do_refresh, daemon=True).start()
     threading.Thread(target=refresh_loop, daemon=True).start()
